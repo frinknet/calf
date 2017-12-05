@@ -85,7 +85,6 @@
 #ifdef ENABLE_EXPERIMENTAL
     // Pitch tools
     PER_MODULE_ITEM(pitch,               false, "pitch")
-    PER_MODULE_ITEM(trigger,             false, "trigger")
     // Widget tester
     //PER_MODULE_ITEM(widgets,             false, "widgets")
 #endif
