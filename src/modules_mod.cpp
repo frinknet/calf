@@ -45,6 +45,9 @@ void flanger_audio_module::set_sample_rate(uint32_t sr) {
     srate = sr;
     left.setup(sr);
     right.setup(sr);
+    int meter[] = {param_meter_inL,  param_meter_inR, param_meter_outL, param_meter_outR};
+    int clip[]  = {param_clip_inL, param_clip_inR, param_clip_outL, param_clip_outR};
+    meters.init(params, meter, clip, 4, srate);
 }
 
 void flanger_audio_module::deactivate() {
@@ -59,12 +62,15 @@ void flanger_audio_module::params_changed()
     float min_delay = *params[par_delay] / 1000.0;
     float mod_depth = *params[par_depth] / 1000.0;
     float fb = *params[par_fb];
+    int lfo_active = *params[param_lfo];
     left.set_dry(dry); right.set_dry(dry);
     left.set_wet(wet); right.set_wet(wet);
     left.set_rate(rate); right.set_rate(rate);
     left.set_min_delay(min_delay); right.set_min_delay(min_delay);
     left.set_mod_depth(mod_depth); right.set_mod_depth(mod_depth);
     left.set_fb(fb); right.set_fb(fb);
+    left.set_lfo_active(lfo_active); right.set_lfo_active(lfo_active);
+    
     float r_phase = *params[par_stereo] * (1.f / 360.f);
     clear_reset = false;
     if (*params[par_reset] >= 0.5) {
@@ -128,6 +134,9 @@ void phaser_audio_module::set_sample_rate(uint32_t sr)
     srate = sr;
     left.setup(sr);
     right.setup(sr);
+    int meter[] = {param_meter_inL,  param_meter_inR, param_meter_outL, param_meter_outR};
+    int clip[]  = {param_clip_inL, param_clip_inR, param_clip_outL, param_clip_outR};
+    meters.init(params, meter, clip, 4, srate);
 }
 
 void phaser_audio_module::activate()
@@ -153,6 +162,7 @@ void phaser_audio_module::params_changed()
     float base_frq = *params[par_freq];
     float mod_depth = *params[par_depth];
     float fb = *params[par_fb];
+    int lfo_active = *params[param_lfo];
     int stages = (int)*params[par_stages];
     left.set_dry(dry); right.set_dry(dry);
     left.set_wet(wet); right.set_wet(wet);
@@ -161,6 +171,7 @@ void phaser_audio_module::params_changed()
     left.set_mod_depth(mod_depth); right.set_mod_depth(mod_depth);
     left.set_fb(fb); right.set_fb(fb);
     left.set_stages(stages); right.set_stages(stages);
+    left.set_lfo_active(lfo_active); right.set_lfo_active(lfo_active);
     float r_phase = *params[par_stereo] * (1.f / 360.f);
     clear_reset = false;
     if (*params[par_reset] >= 0.5) {
@@ -225,6 +236,9 @@ void rotary_speaker_audio_module::set_sample_rate(uint32_t sr)
 {
     srate = sr;
     setup();
+    int meter[] = {param_meter_inL,  param_meter_inR, param_meter_outL, param_meter_outR};
+    int clip[]  = {param_clip_inL, param_clip_inR, param_clip_outL, param_clip_outR};
+    meters.init(params, meter, clip, 4, srate);
 }
 
 void rotary_speaker_audio_module::setup()
@@ -336,76 +350,93 @@ inline bool rotary_speaker_audio_module::incr_towards(float &aspeed, float raspe
 
 uint32_t rotary_speaker_audio_module::process(uint32_t offset, uint32_t nsamples, uint32_t inputs_mask, uint32_t outputs_mask)
 {
-    if (true)
-    {
-        crossover2l.set_bp_rbj(2000.f, 0.7, (float)srate);
-        crossover2r.copy_coeffs(crossover2l);
-        damper1l.set_bp_rbj(1000.f*pow(4.0, *params[par_test]), 0.7, (float)srate);
-        damper1r.copy_coeffs(damper1l);
+    bool bypassed = bypass.update(*params[param_bypass] > 0.5f, nsamples);
+    if (bypassed) {
+        for (unsigned int i = offset; i < nsamples + offset; i++) {
+            outs[0][i] = ins[0][i];
+            outs[1][i] = ins[1][i];
+            float values[] = {0,0,0,0};
+            meters.process(values);
+        }
+    } else {
+        if (true)
+        {
+            crossover2l.set_bp_rbj(2000.f, 0.7, (float)srate);
+            crossover2r.copy_coeffs(crossover2l);
+            damper1l.set_bp_rbj(1000.f*pow(4.0, *params[par_test]), 0.7, (float)srate);
+            damper1r.copy_coeffs(damper1l);
+        }
+        else
+        {
+            crossover2l.set_hp_rbj(800.f, 0.7, (float)srate);
+            crossover2r.copy_coeffs(crossover2l);
+        }
+        int shift = (int)(300000 * (*params[par_shift])), pdelta = (int)(300000 * (*params[par_spacing]));
+        int md = (int)(100 * (*params[par_moddepth]));
+        float mix = 0.5 * (1.0 - *params[par_micdistance]);
+        float mix2 = *params[par_reflection];
+        float mix3 = mix2 * mix2;
+        double am_depth = *params[par_am_depth];
+        for (unsigned int i = 0; i < nsamples; i++) {
+            float in_l = ins[0][i + offset], in_r = ins[1][i + offset];
+            in_l *= *params[param_level_in];
+            in_r *= *params[param_level_in];
+            double in_mono = atan(0.5f * (in_l + in_r));
+            
+            int xl = pseudo_sine_scl(phase_l), yl = pseudo_sine_scl(phase_l + 0x40000000);
+            int xh = pseudo_sine_scl(phase_h), yh = pseudo_sine_scl(phase_h + 0x40000000);
+            // printf("%d %d %d\n", shift, pdelta, shift + pdelta + 20 * xl);
+            meter_l = xl;
+            meter_h = xh;
+            // float out_hi_l = in_mono - delay.get_interp_1616(shift + md * xh) + delay.get_interp_1616(shift + md * 65536 + pdelta - md * yh) - delay.get_interp_1616(shift + md * 65536 + pdelta + pdelta - md * xh);
+            // float out_hi_r = in_mono + delay.get_interp_1616(shift + md * 65536 - md * yh) - delay.get_interp_1616(shift + pdelta + md * xh) + delay.get_interp_1616(shift + pdelta + pdelta + md * yh);
+            float fm_hi_l = delay.get_interp_1616(shift + md * xh) - mix2 * delay.get_interp_1616(shift + md * 65536 + pdelta - md * yh) + mix3 * delay.get_interp_1616(shift + md * 65536 + pdelta + pdelta - md * xh);
+            float fm_hi_r = delay.get_interp_1616(shift + md * 65536 - md * yh) - mix2 * delay.get_interp_1616(shift + pdelta + md * xh) + mix3 * delay.get_interp_1616(shift + pdelta + pdelta + md * yh);
+            float out_hi_l = lerp(in_mono, (double)damper1l.process(fm_hi_l), lerp(0.5, xh * 1.0 / 65536.0, am_depth));
+            float out_hi_r = lerp(in_mono, (double)damper1r.process(fm_hi_r), lerp(0.5, yh * 1.0 / 65536.0, am_depth));
+    
+            float out_lo_l = lerp(in_mono, (double)delay.get_interp_1616(shift + (md * xl >> 2)), lerp(0.5, yl * 1.0 / 65536.0, am_depth)); // + delay.get_interp_1616(shift + md * 65536 + pdelta - md * yl);
+            float out_lo_r = lerp(in_mono, (double)delay.get_interp_1616(shift + (md * yl >> 2)), lerp(0.5, xl * 1.0 / 65536.0, am_depth)); // + delay.get_interp_1616(shift + md * 65536 + pdelta - md * yl);
+            
+            out_hi_l = crossover2l.process(out_hi_l); // sanitize(out_hi_l);
+            out_hi_r = crossover2r.process(out_hi_r); // sanitize(out_hi_r);
+            out_lo_l = crossover1l.process(out_lo_l); // sanitize(out_lo_l);
+            out_lo_r = crossover1r.process(out_lo_r); // sanitize(out_lo_r);
+            
+            float out_l = out_hi_l + out_lo_l;
+            float out_r = out_hi_r + out_lo_r;
+            
+            float mic_l = out_l + mix * (out_r - out_l);
+            float mic_r = out_r + mix * (out_l - out_r);
+            
+            outs[0][i + offset] = mic_l * *params[param_level_out];
+            outs[1][i + offset] = mic_r * *params[param_level_out];
+            delay.put(in_mono);
+            phase_l += dphase_l;
+            phase_h += dphase_h;
+            
+            float values[] = {in_l, in_r, outs[0][i + offset], outs[1][i + offset]};
+            meters.process(values);
+        }
+        crossover1l.sanitize();
+        crossover1r.sanitize();
+        crossover2l.sanitize();
+        crossover2r.sanitize();
+        damper1l.sanitize();
+        damper1r.sanitize();
+        float delta = nsamples * 1.0 / srate;
+        if (vibrato_mode == 5)
+            update_speed_manual(delta);
+        else
+        {
+            bool u1 = incr_towards(aspeed_l, dspeed, delta * 0.2, delta * 0.14);
+            bool u2 = incr_towards(aspeed_h, dspeed, delta, delta * 0.5);
+            if (u1 || u2)
+                set_vibrato();
+        }
+        bypass.crossfade(ins, outs, 2, offset, nsamples);
     }
-    else
-    {
-        crossover2l.set_hp_rbj(800.f, 0.7, (float)srate);
-        crossover2r.copy_coeffs(crossover2l);
-    }
-    int shift = (int)(300000 * (*params[par_shift])), pdelta = (int)(300000 * (*params[par_spacing]));
-    int md = (int)(100 * (*params[par_moddepth]));
-    float mix = 0.5 * (1.0 - *params[par_micdistance]);
-    float mix2 = *params[par_reflection];
-    float mix3 = mix2 * mix2;
-    double am_depth = *params[par_am_depth];
-    for (unsigned int i = 0; i < nsamples; i++) {
-        float in_l = ins[0][i + offset], in_r = ins[1][i + offset];
-        double in_mono = atan(0.5f * (in_l + in_r));
-        
-        int xl = pseudo_sine_scl(phase_l), yl = pseudo_sine_scl(phase_l + 0x40000000);
-        int xh = pseudo_sine_scl(phase_h), yh = pseudo_sine_scl(phase_h + 0x40000000);
-        // printf("%d %d %d\n", shift, pdelta, shift + pdelta + 20 * xl);
-        meter_l = xl;
-        meter_h = xh;
-        // float out_hi_l = in_mono - delay.get_interp_1616(shift + md * xh) + delay.get_interp_1616(shift + md * 65536 + pdelta - md * yh) - delay.get_interp_1616(shift + md * 65536 + pdelta + pdelta - md * xh);
-        // float out_hi_r = in_mono + delay.get_interp_1616(shift + md * 65536 - md * yh) - delay.get_interp_1616(shift + pdelta + md * xh) + delay.get_interp_1616(shift + pdelta + pdelta + md * yh);
-        float fm_hi_l = delay.get_interp_1616(shift + md * xh) - mix2 * delay.get_interp_1616(shift + md * 65536 + pdelta - md * yh) + mix3 * delay.get_interp_1616(shift + md * 65536 + pdelta + pdelta - md * xh);
-        float fm_hi_r = delay.get_interp_1616(shift + md * 65536 - md * yh) - mix2 * delay.get_interp_1616(shift + pdelta + md * xh) + mix3 * delay.get_interp_1616(shift + pdelta + pdelta + md * yh);
-        float out_hi_l = lerp(in_mono, (double)damper1l.process(fm_hi_l), lerp(0.5, xh * 1.0 / 65536.0, am_depth));
-        float out_hi_r = lerp(in_mono, (double)damper1r.process(fm_hi_r), lerp(0.5, yh * 1.0 / 65536.0, am_depth));
-
-        float out_lo_l = lerp(in_mono, (double)delay.get_interp_1616(shift + (md * xl >> 2)), lerp(0.5, yl * 1.0 / 65536.0, am_depth)); // + delay.get_interp_1616(shift + md * 65536 + pdelta - md * yl);
-        float out_lo_r = lerp(in_mono, (double)delay.get_interp_1616(shift + (md * yl >> 2)), lerp(0.5, xl * 1.0 / 65536.0, am_depth)); // + delay.get_interp_1616(shift + md * 65536 + pdelta - md * yl);
-        
-        out_hi_l = crossover2l.process(out_hi_l); // sanitize(out_hi_l);
-        out_hi_r = crossover2r.process(out_hi_r); // sanitize(out_hi_r);
-        out_lo_l = crossover1l.process(out_lo_l); // sanitize(out_lo_l);
-        out_lo_r = crossover1r.process(out_lo_r); // sanitize(out_lo_r);
-        
-        float out_l = out_hi_l + out_lo_l;
-        float out_r = out_hi_r + out_lo_r;
-        
-        float mic_l = out_l + mix * (out_r - out_l);
-        float mic_r = out_r + mix * (out_l - out_r);
-        
-        outs[0][i + offset] = mic_l;
-        outs[1][i + offset] = mic_r;
-        delay.put(in_mono);
-        phase_l += dphase_l;
-        phase_h += dphase_h;
-    }
-    crossover1l.sanitize();
-    crossover1r.sanitize();
-    crossover2l.sanitize();
-    crossover2r.sanitize();
-    damper1l.sanitize();
-    damper1r.sanitize();
-    float delta = nsamples * 1.0 / srate;
-    if (vibrato_mode == 5)
-        update_speed_manual(delta);
-    else
-    {
-        bool u1 = incr_towards(aspeed_l, dspeed, delta * 0.2, delta * 0.14);
-        bool u2 = incr_towards(aspeed_h, dspeed, delta, delta * 0.5);
-        if (u1 || u2)
-            set_vibrato();
-    }
+    meters.fall(nsamples);
     if(params[par_meter_l] != NULL) {
         *params[par_meter_l] = (float)meter_l / 65536.0;
     }
@@ -444,6 +475,9 @@ void multichorus_audio_module::set_sample_rate(uint32_t sr) {
     last_r_phase = -1;
     left.setup(sr);
     right.setup(sr);
+    int meter[] = {param_meter_inL,  param_meter_inR, param_meter_outL, param_meter_outR};
+    int clip[]  = {param_clip_inL, param_clip_inR, param_clip_outL, param_clip_outR};
+    meters.init(params, meter, clip, 4, srate);
 }
 
 void multichorus_audio_module::params_changed()
@@ -455,11 +489,13 @@ void multichorus_audio_module::params_changed()
     float min_delay = *params[par_delay] / 1000.0;
     float mod_depth = *params[par_depth] / 1000.0;
     float overlap = *params[par_overlap];
+    int lfo_active = *params[param_lfo];
     left.set_dry(dry); right.set_dry(dry);
     left.set_wet(wet); right.set_wet(wet);
     left.set_rate(rate); right.set_rate(rate);
     left.set_min_delay(min_delay); right.set_min_delay(min_delay);
     left.set_mod_depth(mod_depth); right.set_mod_depth(mod_depth);
+    left.set_lfo_active(lfo_active); right.set_lfo_active(lfo_active);
     int voices = (int)*params[par_voices];
     left.lfo.set_voices(voices); right.lfo.set_voices(voices);
     left.lfo.set_overlap(overlap);right.lfo.set_overlap(overlap);
@@ -486,8 +522,13 @@ void multichorus_audio_module::params_changed()
 
 uint32_t multichorus_audio_module::process(uint32_t offset, uint32_t numsamples, uint32_t inputs_mask, uint32_t outputs_mask)
 {
-    left.process(outs[0] + offset, ins[0] + offset, numsamples);
-    right.process(outs[1] + offset, ins[1] + offset, numsamples);
+    left.process(outs[0] + offset, ins[0] + offset, numsamples, *params[param_on] > 0.5, *params[param_level_in], *params[param_level_out]);
+    right.process(outs[1] + offset, ins[1] + offset, numsamples, *params[param_on] > 0.5, *params[param_level_in], *params[param_level_out]);
+    for (uint32_t i = offset; i < offset + numsamples; i++) {
+        float values[] = {ins[0][i] * *params[param_level_in], ins[1][i] * *params[param_level_in], outs[0][i], outs[1][i]};
+        meters.process(values);
+    }
+    meters.fall(numsamples);
     return outputs_mask; // XXXKF allow some delay after input going blank
 }
 
@@ -536,9 +577,9 @@ bool multichorus_audio_module::get_graph(int index, int subindex, int phase, flo
             // scale to -1..1
             data[i] = orig / 65536.0;
         }
+        redraw_sine = false;
         return true;
     }
-    redraw_sine = false;
     return false;
 }
 
@@ -594,9 +635,13 @@ pulsator_audio_module::pulsator_audio_module()
 {
     is_active = false;
     srate = 0;
-    mode_old    = -1;
-    amount_old  = -1;
-    offset_old  = -1;
+    mode_old     = -1;
+    amount_old   = -1;
+    offset_l_old = -1;
+    offset_r_old = -1;
+    reset_old    = -1;
+    pwidth_old   = 0;
+    freq_old     = 0;
 }
 
 void pulsator_audio_module::activate()
@@ -615,21 +660,45 @@ void pulsator_audio_module::deactivate()
 
 void pulsator_audio_module::params_changed()
 {
-    lfoL.set_params(*params[param_freq], *params[param_mode], 0.f, srate, *params[param_amount]);
-    lfoR.set_params(*params[param_freq], *params[param_mode], *params[param_offset], srate, *params[param_amount]);
     clear_reset = false;
-    if (*params[param_reset] >= 0.5) {
+    if (*params[param_reset] >= 0.5 and reset_old != true) {
         clear_reset = true;
         lfoL.set_phase(0.f);
         lfoR.set_phase(0.f);
+        reset_old = true;
     }
+    if (*params[param_reset] < 0.5)
+        reset_old = false;
+    
+    double freq = 2;
+    freq = convert_periodic(*params[param_bpm + (int)((periodic_unit)*params[param_timing])],
+                                   (periodic_unit)*params[param_timing], UNIT_HZ);
+    if (freq != freq_old) {
+        freq_old = freq;
+        clear_reset = true;
+    }
+    
     if (*params[param_mode]   != mode_old
      or *params[param_amount] != amount_old
-     or *params[param_offset] != offset_old
+     or *params[param_offset_l] != offset_l_old
+     or *params[param_offset_r] != offset_r_old
+     or *params[param_pwidth] != pwidth_old
      or clear_reset) {
+        float pw = 1;
+        switch (int(*params[param_pwidth])) {
+            case 0: pw = 0.125; break;
+            case 1: pw = 0.25;  break;
+            case 2: pw = 0.5;   break;
+            case 3: pw = 1;     break;
+            case 4: pw = 2;     break;
+        }
+        lfoL.set_params(freq, *params[param_mode], *params[param_offset_l], srate, *params[param_amount], pw);
+        lfoR.set_params(freq, *params[param_mode], *params[param_offset_r], srate, *params[param_amount], pw);
         mode_old     = *params[param_mode];
         amount_old   = *params[param_amount];
-        offset_old   = *params[param_offset];
+        offset_l_old = *params[param_offset_l];
+        offset_r_old = *params[param_offset_r];
+        pwidth_old   = *params[param_pwidth];
         redraw_graph = true;
     }
 }

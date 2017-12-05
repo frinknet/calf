@@ -37,49 +37,49 @@
 
 ///////////////////////////////////////// knob ///////////////////////////////////////////////
 
-static float
-calf_knob_get_color (CalfKnob *self, float deg, float phase, float start, float last, float tickw)
+static void
+calf_knob_get_color (CalfKnob *self, float deg, float phase, float start, float last, float tickw, float *r, float *g, float *b, float *a)
 {
-    double on  = 1.0;
-    double off = 0.22;
+    GtkStateType state = GTK_STATE_NORMAL;
+    GtkWidget *widget = GTK_WIDGET(self);
+    
     //printf ("get color: phase %.2f deg %.2f\n", phase, deg);
     if (self->type == 0) {
         // normal
-        if (deg > phase or phase == start)
-            return off;
-        else return on;
+        if (!(deg > phase or phase == start))
+            state = GTK_STATE_PRELIGHT;
     }
     if (self->type == 1) {
         // centered
         if (deg > 270 and deg <= phase and phase > 270)
-            return on;
+            state = GTK_STATE_PRELIGHT;
         if (deg <= 270 and deg > phase and phase < 270)
-            return on;
+            state = GTK_STATE_PRELIGHT;
         if ((deg == start and phase == start)
         or  (deg == 270.  and phase > 270.))
-            return on;
-        return off;
+            state = GTK_STATE_PRELIGHT;
     }
     if (self->type == 2) {
         // reverse
         if (deg > phase or phase == start)
-            return on;
-        else return off;
+            state = GTK_STATE_PRELIGHT;
     }
     if (self->type == 3) {
         for (unsigned j = 0; j < self->ticks.size(); j++) {
             float tp = fmod((start + range01(self->ticks[j]) * 360.) - phase + 360, 360);
             if (tp > 360 - tickw or tp < tickw) {
-                return on;
+                state = GTK_STATE_PRELIGHT;
             }
         }
         if (deg > phase and deg > last + tickw and last < phase)
-            return on;
+            state = GTK_STATE_PRELIGHT;
         
     }
-    return off;
-        
-        
+    get_fg_color(widget, &state, r, g, b);
+    if (state == GTK_STATE_NORMAL)
+        gtk_widget_style_get(widget, "alpha-normal", a, NULL);
+    else
+        gtk_widget_style_get(widget, "alpha-prelight", a, NULL);
         
 }
 
@@ -88,21 +88,33 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
 {
     g_assert(CALF_IS_KNOB(widget));
     CalfKnob *self = CALF_KNOB(widget);
-    CalfKnobClass *cls = CALF_KNOB_CLASS(GTK_OBJECT_GET_CLASS(widget));
-    GdkPixbuf *pixbuf = cls->knob_image[self->size - 1];
+    
+    if (!self->knob_image)
+        return FALSE;
+        
+    GdkPixbuf *pixbuf = self->knob_image;
     gint iw = gdk_pixbuf_get_width(pixbuf);
     gint ih = gdk_pixbuf_get_height(pixbuf);
     
-    float widths[6]  = {0, 2.2, 3.5, 3.5, 4.2, 5.5};
-    float margins[6] = {0, 2.2, 3.5, 3.8, 4.2, 4.5};
-    float pins_m[6]  = {0, 6,   10,   10,   11,  13};
-    float pins_s[6]  = {0, 4,   4,   4,   4,   4};
-    
+    if (self->debug > 1)
+        printf("pixbuf: %d x %d\n", iw, ih);
+        
     GtkAdjustment *adj = gtk_range_get_adjustment(GTK_RANGE(widget));
     cairo_t *ctx = gdk_cairo_create(GDK_DRAWABLE(widget->window));
     
     float r, g, b;
-    get_fg_color(widget, NULL, &r, &g, &b);
+    GtkStateType state;
+    
+    float rmargin, rwidth, tmargin, twidth, tlength, flw;
+    gtk_widget_style_get(widget, "ring-margin", &rmargin,
+                                 "ring-width",  &rwidth,
+                                 "tick-margin", &tmargin,
+                                 "tick-width",  &twidth,
+                                 "tick-length", &tlength,
+                                 "focus-line-width", &flw, NULL);
+    
+    if (self->debug > 1)
+        printf("gtkrc: rm %.2f | rw %.2f | tm %.2f | tw %.2f | tl %.2f\n", rmargin, rwidth, tmargin, twidth, tlength);
     
     double ox   = widget->allocation.x + (widget->allocation.width - iw) / 2;
     double oy   = widget->allocation.y + (widget->allocation.height - ih) / 2;
@@ -110,6 +122,9 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
     float  rad  = size / 2;
     double xc   = ox + rad;
     double yc   = oy + rad;
+    
+    if (self->debug > 1)
+        printf("position: %.2f x %.2f\n", ox, oy);
     
     unsigned int tick;
     double phase;
@@ -120,15 +135,11 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
     double start;
     double nend; 
     double zero;
-    double opac;
+    float opac = 0;
     
-    double lwidth = widths[self->size];
-    double lmarg  = margins[self->size];
-    double perim  = (rad - lmarg) * 2 * M_PI;
+    double perim  = (rad - rmargin) * 2 * M_PI;
     double tickw  = 2. / perim * 360.;
     double tickw2 = tickw / 2.;
-    
-    const unsigned int debug = 0;
     
     cairo_rectangle(ctx, ox, oy, size + size / 2, size + size / 2);
     cairo_clip(ctx);
@@ -172,50 +183,61 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
     phase = (adj->value - adj->lower) * base / (adj->upper - adj->lower) + start;
     
     // draw pin
-    float x1 = ox + rad + (rad - pins_m[self->size]) * cos(phase * (M_PI / 180.));
-    float y1 = oy + rad + (rad - pins_m[self->size]) * sin(phase * (M_PI / 180.));
-    float x2 = ox + rad + (rad - pins_s[self->size] - pins_m[self->size]) * cos(phase * (M_PI / 180.));
-    float y2 = oy + rad + (rad - pins_s[self->size] - pins_m[self->size]) * sin(phase * (M_PI / 180.));
+    state = GTK_STATE_ACTIVE;
+    get_fg_color(widget, &state, &r, &g, &b);
+    float x1 = ox + rad + (rad - tmargin) * cos(phase * (M_PI / 180.));
+    float y1 = oy + rad + (rad - tmargin) * sin(phase * (M_PI / 180.));
+    float x2 = ox + rad + (rad - tlength - tmargin) * cos(phase * (M_PI / 180.));
+    float y2 = oy + rad + (rad - tlength - tmargin) * sin(phase * (M_PI / 180.));
     cairo_move_to(ctx, x1, y1);
     cairo_line_to(ctx, x2, y2);
-    cairo_set_source_rgba(ctx, r, g, b, 0.99);
-    cairo_set_line_width(ctx, lwidth / 2.);
+    cairo_set_source_rgba(ctx, r, g, b, 1);
+    cairo_set_line_width(ctx, twidth);
     cairo_stroke(ctx);
     
-    cairo_set_line_width(ctx, lwidth);
+    if (self->debug > 1)
+        printf("pin color: %.2f | %.2f | %.2f\n", r, g, b);
+    
+    cairo_set_line_width(ctx, rwidth);
     
     // draw ticks and rings
+    state = GTK_STATE_NORMAL;
+    get_fg_color(widget, &state, &r, &g, &b);
     unsigned int evsize = 4;
     double events[4] = { start, zero, end, phase };
     if (self->type == 3)
         evsize = 3;
     std::sort(events, events + evsize);
-    if (debug) {
+    if (self->debug) {
         printf("start %.2f end %.2f last %.2f deg %.2f tick %d ticks %d phase %.2f base %.2f nend %.2f\n", start, end, last, deg, tick, int(self->ticks.size()), phase, base, nend);
         for (unsigned int i = 0; i < self->ticks.size(); i++) {
             printf("tick %d %.2f\n", i, self->ticks[i]);
         }
     }
     while (deg <= end) {
-        if (debug) printf("tick %d deg %.2f last %.2f end %.2f\n", tick, deg, last, end);
+        if (self->debug) printf("tick %d deg %.2f last %.2f end %.2f\n", tick, deg, last, end);
         if (self->ticks.size() and deg == start + range01(self->ticks[tick]) * base) {
             // seems we want to draw a tick on this angle.
             // so we have to fill the void between the last set angle
             // and the point directly before the tick first.
             // (draw from last known angle to tickw2 + tickw before actual deg)
             if (last < deg - tickw - tickw2) {
-                opac = calf_knob_get_color(self, (deg - tickw - tickw2), phase, start, last, tickw + tickw2);
+                calf_knob_get_color(self, (deg - tickw - tickw2), phase, start, last, tickw + tickw2, &r, &g, &b, &opac);
                 cairo_set_source_rgba(ctx, r, g, b, opac);
-                cairo_arc(ctx, xc, yc, rad - lmarg, last * (M_PI / 180.), std::max(last, std::min(nend, (deg - tickw - tickw2))) * (M_PI / 180.));
+                cairo_arc(ctx, xc, yc, rad - rmargin, last * (M_PI / 180.), std::max(last, std::min(nend, (deg - tickw - tickw2))) * (M_PI / 180.));
                 cairo_stroke(ctx);
-                if (debug) printf("fill from %.2f to %.2f @ %.2f\n", last, (deg - tickw - tickw2), opac);
+                if (self->debug) printf("fill from %.2f to %.2f @ %.2f\n", last, (deg - tickw - tickw2), opac);
+                if (self->debug > 1)
+                    printf("color: %.2f | %.2f | %.2f\n", r, g, b);
             }
             // draw the tick itself
-            opac = calf_knob_get_color(self, deg, phase, start, end, tickw + tickw2);
+            calf_knob_get_color(self, deg, phase, start, end, tickw + tickw2, &r, &g, &b, &opac);
             cairo_set_source_rgba(ctx, r, g, b, opac);
-            cairo_arc(ctx, xc, yc, rad - lmarg, (deg - tickw2) * (M_PI / 180.), (deg + tickw2) * (M_PI / 180.));
+            cairo_arc(ctx, xc, yc, rad - rmargin, (deg - tickw2) * (M_PI / 180.), (deg + tickw2) * (M_PI / 180.));
             cairo_stroke(ctx);
-            if (debug) printf("tick from %.2f to %.2f @ %.2f\n", (deg - tickw2), (deg + tickw2), opac);
+            if (self->debug) printf("tick from %.2f to %.2f @ %.2f\n", (deg - tickw2), (deg + tickw2), opac);
+            if (self->debug > 1)
+                printf("color: %.2f | %.2f | %.2f\n", r, g, b);
             // set last known angle to deg plus tickw + tickw2
             last = deg + tickw + tickw2;
             // and count up tick
@@ -230,11 +252,13 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
             // the actual one, while the actual one isn't a tick (but a
             // knobs position or a center)
             if ((last < deg)) {
-                opac = calf_knob_get_color(self, deg, phase, start, last, tickw + tickw2);
+                calf_knob_get_color(self, deg, phase, start, last, tickw + tickw2, &r, &g, &b, &opac);
                 cairo_set_source_rgba(ctx, r, g, b, opac);
-                cairo_arc(ctx, xc, yc, rad - lmarg, last * (M_PI / 180.), std::min(nend, std::max(last, deg)) * (M_PI / 180.));
+                cairo_arc(ctx, xc, yc, rad - rmargin, last * (M_PI / 180.), std::min(nend, std::max(last, deg)) * (M_PI / 180.));
                 cairo_stroke(ctx);
-                if (debug) printf("void from %.2f to %.2f @ %.2f\n", last, std::min(nend, std::max(last, deg)), opac);
+                if (self->debug) printf("void from %.2f to %.2f @ %.2f\n", last, std::min(nend, std::max(last, deg)), opac);
+                if (self->debug > 1)
+                    printf("color: %.2f | %.2f | %.2f\n", r, g, b);
             }
             last = deg;
         }
@@ -242,21 +266,21 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
             break;
         // set deg to next event
         for (unsigned int i = 0; i < evsize; i++) {
-            if (debug > 1) printf("checking %.2f (start %.2f zero %.2f phase %.2f end %.2f)\n", events[i], start, zero, phase, end);
+            if (self->debug > 1) printf("checking %.2f (start %.2f zero %.2f phase %.2f end %.2f)\n", events[i], start, zero, phase, end);
             if (events[i] > deg) {
                 deg = events[i];
-                if (debug > 1) printf("taken.\n");
+                if (self->debug > 1) printf("taken.\n");
                 break;
             }
         }
         if (tick < self->ticks.size()) {
             deg = std::min(deg, start + range01(self->ticks[tick]) * base);
-            if (debug > 1) printf("checking tick %d %.2f\n", tick, start + range01(self->ticks[tick]) * base);
+            if (self->debug > 1) printf("checking tick %d %.2f\n", tick, start + range01(self->ticks[tick]) * base);
         }
         //deg = std::max(last, deg);
-        if (debug > 1) printf("finally! deg %.2f\n", deg);
+        if (self->debug > 1) printf("finally! deg %.2f\n", deg);
     }
-    if (debug) printf("\n");
+    if (self->debug) printf("\n");
     cairo_destroy(ctx);
     return TRUE;
 }
@@ -266,12 +290,29 @@ calf_knob_size_request (GtkWidget *widget,
                            GtkRequisition *requisition)
 {
     g_assert(CALF_IS_KNOB(widget));
-
     CalfKnob *self = CALF_KNOB(widget);
+    if (!self->knob_image)
+        return;
+    requisition->width  = gdk_pixbuf_get_width(self->knob_image);
+    requisition->height = gdk_pixbuf_get_height(self->knob_image);
+}
 
-    CalfKnobClass * cls = CALF_KNOB_CLASS(GTK_OBJECT_GET_CLASS(widget));
-    requisition->width  = gdk_pixbuf_get_width(cls->knob_image[self->size - 1]);
-    requisition->height = gdk_pixbuf_get_height(cls->knob_image[self->size - 1]);
+void
+calf_knob_set_size (CalfKnob *self, int size)
+{
+    char name[128];
+    GtkWidget *widget = GTK_WIDGET(self);
+    self->size = size;
+    sprintf(name, "%s_%d\n", gtk_widget_get_name(widget), size);
+    gtk_widget_set_name(widget, name);
+    gtk_widget_queue_resize(widget);
+}
+
+void
+calf_knob_set_pixbuf (CalfKnob *self, GdkPixbuf *pixbuf)
+{
+    self->knob_image = pixbuf;
+    gtk_widget_queue_resize(GTK_WIDGET(self));
 }
 
 static gboolean calf_knob_enter (GtkWidget *widget, GdkEventCrossing* ev)
@@ -481,13 +522,28 @@ calf_knob_class_init (CalfKnobClass *klass)
     widget_class->key_press_event = calf_knob_key_press;
     widget_class->key_release_event = calf_knob_key_release;
     widget_class->scroll_event = calf_knob_scroll;
-    GError *error = NULL;
-    klass->knob_image[0] = gdk_pixbuf_new_from_file(PKGLIBDIR "/knob1.png", &error);
-    klass->knob_image[1] = gdk_pixbuf_new_from_file(PKGLIBDIR "/knob2.png", &error);
-    klass->knob_image[2] = gdk_pixbuf_new_from_file(PKGLIBDIR "/knob3.png", &error);
-    klass->knob_image[3] = gdk_pixbuf_new_from_file(PKGLIBDIR "/knob4.png", &error);
-    klass->knob_image[4] = gdk_pixbuf_new_from_file(PKGLIBDIR "/knob5.png", &error);
-    g_assert(klass->knob_image != NULL);
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("ring-margin", "Ring Margin", "Margin of the ring from edge",
+        0.0, 100.0, 0.0, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("ring-width", "Ring Width", "Width of the ring",
+        0.0, 100.0, 0.0, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("tick-margin", "Tick Margin", "Margin of the tick from edge",
+        0.0, 100.0, 0.0, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("tick-length", "Tick Length", "Length of the tick",
+        0.0, 100.0, 0.0, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("tick-width", "Tick Width", "Width of the tick",
+        0.0, 100.0, 0.0, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("alpha-normal", "Alpha Normal", "Alpha of ring in normal state",
+        0.0, 1.0, 0.2, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("alpha-prelight", "Alpha Prelight", "Alpha of ring in prelight state",
+        0.0, 1.0, 1.0, GParamFlags(G_PARAM_READWRITE)));
+    
 }
 
 static void
@@ -497,6 +553,7 @@ calf_knob_init (CalfKnob *self)
     GTK_WIDGET_SET_FLAGS (GTK_WIDGET(self), GTK_CAN_FOCUS);
     widget->requisition.width = 40;
     widget->requisition.height = 40;
+    self->knob_image = NULL;
 }
 
 GtkWidget *
@@ -542,17 +599,18 @@ calf_knob_get_type (void)
         };
         
         for (int i = 0; ; i++) {
-            char *name = g_strdup_printf("CalfKnob%u%d", 
-                ((unsigned int)(intptr_t)calf_knob_class_init) >> 16, i);
+            //char *name = g_strdup_printf("CalfKnob%u%d", 
+                //((unsigned int)(intptr_t)calf_knob_class_init) >> 16, i);
+            const char *name = "CalfKnob";
             if (g_type_from_name(name)) {
-                free(name);
+                //free(name);
                 continue;
             }
             type = g_type_register_static(GTK_TYPE_RANGE,
                                           name,
                                           &type_info,
                                           (GTypeFlags)0);
-            free(name);
+            //free(name);
             break;
         }
     }

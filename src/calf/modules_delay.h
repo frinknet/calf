@@ -52,8 +52,6 @@ public:
     uint32_t srate;
     dsp::gain_smoothing amount, dryamount;
     int predelay_amt;
-    float meter_wet, meter_out;
-    uint32_t clip;
     
     void params_changed();
     uint32_t process(uint32_t offset, uint32_t numsamples, uint32_t inputs_mask, uint32_t outputs_mask);
@@ -66,12 +64,13 @@ public:
  * VINTAGE DELAY by Krzysztof Foltman
 **********************************************************************/
 
-class vintage_delay_audio_module: public audio_module<vintage_delay_metadata>
+class vintage_delay_audio_module: public audio_module<vintage_delay_metadata>, public frequency_response_line_graph
 {
 public:    
     // 1MB of delay memory per channel... uh, RAM is cheap
-    enum { MAX_DELAY = 262144, ADDR_MASK = MAX_DELAY - 1 };
+    enum { MAX_DELAY = 524288, ADDR_MASK = MAX_DELAY - 1 };
     enum { MIXMODE_STEREO, MIXMODE_PINGPONG, MIXMODE_LR, MIXMODE_RL }; 
+    enum { FRAG_PERIODIC, FRAG_PATTERN };
     float buffers[2][MAX_DELAY];
     int bufptr, deltime_l, deltime_r, mixmode, medium, old_medium;
     /// number of table entries written (value is only important when it is less than MAX_DELAY, which means that the buffer hasn't been totally filled yet)
@@ -91,9 +90,12 @@ public:
     void set_sample_rate(uint32_t sr);
     void calc_filters();
     uint32_t process(uint32_t offset, uint32_t numsamples, uint32_t inputs_mask, uint32_t outputs_mask);
+    virtual char *configure(const char *key, const char *value);
     
     long _tap_avg;
     long _tap_last;
+    
+    vumeters meters;
 };
 
 /**********************************************************************
@@ -118,7 +120,8 @@ public:
     uint32_t delay;
     uint32_t write_ptr;
     dsp::bypass bypass;
-    
+    vumeters meters;
+
     comp_delay_audio_module();
     virtual ~comp_delay_audio_module();
 
@@ -170,6 +173,9 @@ public:
     int counters[2];
     dsp::overlap_window ow[2];
     int deltime_l, deltime_r;
+    
+    dsp::bypass bypass;
+    vumeters meters;
 
     dsp::gain_smoothing fb_val, dry, width;
 

@@ -31,11 +31,12 @@ G_BEGIN_DECLS
 #define CALF_IS_LED(obj)       (G_TYPE_CHECK_INSTANCE_TYPE ((obj), CALF_TYPE_LED))
 #define CALF_LED_CLASS(klass)  (G_TYPE_CHECK_CLASS_CAST ((klass),  CALF_TYPE_LED, CalfLedClass))
 #define CALF_IS_LED_CLASS(obj) (G_TYPE_CHECK_CLASS_TYPE ((klass),  CALF_TYPE_LED))
+#define CALF_LED_GET_CLASS(obj) (G_TYPE_INSTANCE_GET_CLASS ((obj),  CALF_TYPE_LED, CalfLedClass))
 
 /// Instance object for CalfLed
 struct CalfLed
 {
-    GtkWidget parent;
+    GtkDrawingArea parent;
     cairo_surface_t *cache_surface;
     int led_mode;
     int size;
@@ -45,7 +46,7 @@ struct CalfLed
 /// Class object for CalfLed
 struct CalfLedClass
 {
-    GtkWidgetClass parent_class;
+    GtkDrawingAreaClass parent_class;
 };
 
 /// Create new CalfLed

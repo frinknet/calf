@@ -54,8 +54,8 @@ public:
 private:
     analyzer _analyzer;
     enum { graph_param_count = BaseClass::last_graph_param - BaseClass::first_graph_param + 1, params_per_band = AM::param_p2_active - AM::param_p1_active };
-    float hp_mode_old, hp_freq_old;
-    float lp_mode_old, lp_freq_old;
+    float hp_mode_old, hp_freq_old, hp_q_old;
+    float lp_mode_old, lp_freq_old, lp_q_old;
     float ls_level_old, ls_freq_old, ls_q_old;
     float hs_level_old, hs_freq_old, hs_q_old;
     int indiv_old;
@@ -85,7 +85,7 @@ public:
     bool get_graph(int index, int subindex, int phase, float *data, int points, cairo_iface *context, int *mode) const;
     bool get_layers(int index, int generation, unsigned int &layers) const;
     float freq_gain(int index, double freq) const;
-    string get_crosshair_label(int x, int y, int sx, int sy, int dB, int name, int note, int cents) const;
+    string get_crosshair_label(int x, int y, int sx, int sy, float q, int dB, int name, int note, int cents) const;
 
     void set_sample_rate(uint32_t sr)
     {
@@ -117,9 +117,6 @@ class equalizer30band_audio_module: public audio_module<equalizer30band_metadata
 
     dsp::switcher<orfanidis_eq::filter_type> swL;
     dsp::switcher<orfanidis_eq::filter_type> swR;
-
-    bool is_freq_grid_init;
-    void set_freq_grid();
 
 public:
     uint32_t srate;
@@ -157,6 +154,9 @@ public:
     bool is_active;    
     mutable volatile int last_generation, last_calculated_generation;
     
+    dsp::bypass bypass;
+    vumeters meters;
+
     filter_module_with_inertia(float **ins, float **outs, float **params)
     : inertia_cutoff(dsp::exponential_ramp(128), 20)
     , inertia_resonance(dsp::exponential_ramp(128), 20)
@@ -213,6 +213,9 @@ public:
     void set_sample_rate(uint32_t sr)
     {
         FilterClass::srate = sr;
+        int meter[] = {Metadata::param_meter_inL,  Metadata::param_meter_inR, Metadata::param_meter_outL, Metadata::param_meter_outR};
+        int clip[]  = {Metadata::param_clip_inL, Metadata::param_clip_inR, Metadata::param_clip_outL, Metadata::param_clip_outR};
+        meters.init(params, meter, clip, 4, sr);
     }
 
     
@@ -224,25 +227,42 @@ public:
     uint32_t process(uint32_t offset, uint32_t numsamples, uint32_t inputs_mask, uint32_t outputs_mask) {
 //        printf("sr=%d cutoff=%f res=%f mode=%f\n", FilterClass::srate, *params[Metadata::par_cutoff], *params[Metadata::par_resonance], *params[Metadata::par_mode]);
         uint32_t ostate = 0;
-        numsamples += offset;
-        while(offset < numsamples) {
-            uint32_t numnow = numsamples - offset;
-            // if inertia's inactive, we can calculate the whole buffer at once
-            if (inertia_cutoff.active() || inertia_resonance.active() || inertia_gain.active())
-                numnow = timer.get(numnow);
-            
-            if (outputs_mask & 1) {
-                ostate |= FilterClass::process_channel(0, ins[0] + offset, outs[0] + offset, numnow, inputs_mask & 1);
+        uint32_t orig_offset = offset, orig_numsamples = numsamples;
+        bool bypassed = bypass.update(*params[Metadata::param_bypass] > 0.5f, numsamples);
+        if (bypassed) {
+            float values[] = {0,0,0,0};
+            for (uint32_t i = offset; i < offset + numsamples; i++) {
+                outs[0][i] = ins[0][i];
+                outs[1][i] = ins[1][i];
+                //float values[] = {ins[0][i],ins[1][i],outs[0][i],outs[1][i]};
+                meters.process(values);
+                ostate = -1;
             }
-            if (outputs_mask & 2) {
-                ostate |= FilterClass::process_channel(1, ins[1] + offset, outs[1] + offset, numnow, inputs_mask & 2);
+        } else {
+            numsamples += offset;
+            while(offset < numsamples) {
+                uint32_t numnow = numsamples - offset;
+                // if inertia's inactive, we can calculate the whole buffer at once
+                if (inertia_cutoff.active() || inertia_resonance.active() || inertia_gain.active())
+                    numnow = timer.get(numnow);
+                if (outputs_mask & 1) {
+                    ostate |= FilterClass::process_channel(0, ins[0] + offset, outs[0] + offset, numnow, inputs_mask & 1, *params[Metadata::param_level_in], *params[Metadata::param_level_out]);
+                }
+                if (outputs_mask & 2) {
+                    ostate |= FilterClass::process_channel(1, ins[1] + offset, outs[1] + offset, numnow, inputs_mask & 2, *params[Metadata::param_level_in], *params[Metadata::param_level_out]);
+                }
+                if (timer.elapsed()) {
+                    on_timer();
+                }
+                for (uint32_t i = offset; i < offset + numnow; i++) {
+                    float values[] = {ins[0][i] * *params[Metadata::param_level_in], ins[1][i] * *params[Metadata::param_level_in], outs[0][i], outs[1][i]};
+                    meters.process(values);
+                }
+                offset += numnow;
             }
-            
-            if (timer.elapsed()) {
-                on_timer();
-            }
-            offset += numnow;
+            bypass.crossfade(ins, outs, 2, orig_offset, orig_numsamples);
         }
+        meters.fall(orig_numsamples);
         return ostate;
     }
     float freq_gain(int index, double freq) const {
@@ -288,7 +308,7 @@ class filterclavier_audio_module:
 
     const float min_gain;
     const float max_gain;
-    
+
     int last_note;
     int last_velocity;
 public:    
@@ -389,8 +409,10 @@ typedef xover_audio_module<xover4_metadata> xover4_audio_module;
 
 class vocoder_audio_module: public audio_module<vocoder_metadata>, public frequency_response_line_graph {
 public:
-    int bands, bands_old, order;
-    float order_old;
+    int bands, bands_old, order, hiq_old;
+    float order_old, lower_old, upper_old, tilt_old;
+    float q_old[32];
+    float bandfreq[32];
     uint32_t srate;
     bool is_active;
     static const int maxorder = 8;

@@ -23,6 +23,8 @@
 #include <calf/utils.h>
 #if USE_LV2
 #include <lv2.h>
+#include <calf/lv2_atom.h>
+#include <calf/lv2_options.h>
 #include <calf/lv2_state.h>
 #include <calf/lv2_urid.h>
 #endif
@@ -74,7 +76,8 @@ static void add_port(string &ports, const char *symbol, const char *name, const 
         ss << ind << "lv2:portProperty lv2:connectionOptional ;\n";
     if (!strcmp(type, "atom:AtomPort")) {
         ss << ind << "atom:bufferType atom:Sequence ;\n"
-           << ind << "atom:supports lv2midi:MidiEvent ;" << endl;
+           << ind << "atom:supports lv2midi:MidiEvent ;\n"
+           << ind << "atom:supports atom:Property ;\n"<< endl;
     }
     if (!strcmp(std::string(symbol, 0, 4).c_str(), "in_l")) 
         ss << ind << "lv2:designation pg:left ;\n"
@@ -158,9 +161,20 @@ static bool add_ctl_port(string &ports, const parameter_properties &pp, int pidx
         ss << ind << "lv2:portProperty epp:logarithmic ;\n";
     ss << showpoint;
     if (!(pp.flags & PF_PROP_OUTPUT))
-        ss << ind << "lv2:default " << pp.def_value << " ;\n";
-    ss << ind << "lv2:minimum " << pp.min << " ;\n";
-    ss << ind << "lv2:maximum " << pp.max << " ;\n";
+    {
+        if (pp.def_value == (int)pp.def_value)
+            ss << ind << "lv2:default " << (int)pp.def_value << " ;\n";
+        else
+            ss << ind << "lv2:default " << pp.def_value << " ;\n";
+    }
+    if (pp.min == (int)pp.min)
+        ss << ind << "lv2:minimum " << (int)pp.min << " ;\n";
+    else
+        ss << ind << "lv2:minimum " << pp.min << " ;\n";
+    if (pp.max == (int)pp.max)
+        ss << ind << "lv2:maximum " << (int)pp.max << " ;\n";
+    else
+        ss << ind << "lv2:maximum " << pp.max << " ;\n";
     // XXX This value does not seem to match the definition of the property
     //if (pp.step > 1)
     //    ss << ind << "epp:rangeSteps " << pp.step << " ;\n";
@@ -185,6 +199,9 @@ void make_ttl(string path_prefix, const string *data_dir)
         fprintf(stderr, "Path parameter is required for TTL mode\n");
         exit(1);
     }
+    
+    string plugin_uri_prefix = "http://calf.sourceforge.net/plugins/";
+    
     string header;
     
     header = 
@@ -203,7 +220,12 @@ void make_ttl(string path_prefix, const string *data_dir)
         "@prefix epp: <http://lv2plug.in/ns/ext/port-props#> .\n"
         "@prefix foaf: <http://xmlns.com/foaf/0.1/> .\n"
         "@prefix param: <http://lv2plug.in/ns/ext/parameters#> .\n"
-
+        "\n"
+        "<http://calf.sourceforge.net/team>\n"
+        "    a foaf:Person ;\n"
+        "    foaf:name \"Calf Studio Gear\" ;\n"
+        "    foaf:mbox <mailto:info@calf-studio-gear.org> ;\n"
+        "    foaf:homepage <http://calf-studio-gear.org/> .\n"
         "\n"
     ;
     
@@ -231,19 +253,31 @@ void make_ttl(string path_prefix, const string *data_dir)
         classes[name] = "lv2:" + name;
     }
     classes["SynthesizerPlugin"] = "lv2:InstrumentPlugin";
-        
-    string plugin_uri_prefix = "http://calf.sourceforge.net/plugins/";
 
     string gui_header;
     
 #if USE_LV2_GUI
-    string gtkgui_uri = "<http://calf.sourceforge.net/plugins/gui/gtk2-gui>";
+    string gtkgui_uri     = "<" + plugin_uri_prefix + "gui/gtk2-gui>";
+    string gtkgui_uri_req = "<" + plugin_uri_prefix + "gui/gtk2-gui-req>";
     gui_header = gtkgui_uri + "\n"
         "    a uiext:GtkUI ;\n"
-        "    lv2:extensionData uiext:showInterface ;\n"
+        "    lv2:extensionData uiext:idleInterface ,\n"
+        "        uiext:showInterface ;\n"
         "    lv2:requiredFeature uiext:makeResident ;\n"
+        "    lv2:optionalFeature <http://lv2plug.in/ns/ext/data-access> ;\n"
+        "    lv2:optionalFeature <" LV2_OPTIONS_URI "> ;\n"
+        "    lv2:optionalFeature <" LV2_ATOM_URI "> ;\n"
         "    uiext:binary <calflv2gui.so> .\n"
-        "\n"
+        "\n" + gtkgui_uri_req + "\n"
+        "    a uiext:GtkUI ;\n"
+        "    lv2:extensionData uiext:idleInterface ,\n"
+        "        uiext:showInterface ;\n"
+        "    lv2:requiredFeature uiext:makeResident ;\n"
+        "    lv2:requiredFeature <http://lv2plug.in/ns/ext/instance-access> ;\n"
+        "    lv2:requiredFeature <http://lv2plug.in/ns/ext/data-access> ;\n"
+        "    lv2:optionalFeature <" LV2_OPTIONS_URI "> ;\n"
+        "    lv2:optionalFeature <" LV2_ATOM_URI "> ;\n"
+        "    uiext:binary <calflv2gui.so> .\n"
     ;
 #endif
     
@@ -258,16 +292,19 @@ void make_ttl(string path_prefix, const string *data_dir)
         string uri = string("<" + unquoted_uri + ">");
         id_to_info[pi->get_id()] = make_pair(lpi.label, uri);
         string ttl;
-        ttl = "@prefix : <" + unquoted_uri + "#> .\n" + header + gui_header;
-        
+        ttl = "@prefix : <" + unquoted_uri + "#> .\n";
+        ttl += header + gui_header + "\n";
+
 #if USE_LV2_GUI
+        string gui_uri = (pi->requires_instance_access()) ? gtkgui_uri_req : gtkgui_uri;
+
         for (int j = 0; j < pi->get_param_count(); j++)
         {
             const parameter_properties &props = *pi->get_param_props(j);
             if (props.flags & PF_PROP_OUTPUT)
             {
                 string portnot = " uiext:portNotification [\n    uiext:plugin " + uri + " ;\n    uiext:portIndex " + i2s(j) + "\n] .\n\n";
-                ttl += gtkgui_uri + portnot;
+                ttl += gui_uri + portnot;
             }
         }
 #endif
@@ -281,28 +318,32 @@ void make_ttl(string path_prefix, const string *data_dir)
                 "    lv2:symbol \"in\" ;\n"
                 "    rdfs:label \"Input\" .\n\n";
         }
+        if(pi->get_output_count() == 1) {
+            ttl += ":out a pg:MonoGroup , pg:OutputGroup ;\n"
+                "    lv2:symbol \"out\" ;\n"
+                "    rdfs:label \"Output\" .\n\n";
+        }
         if(pi->get_output_count() >= 2) {
             ttl += ":out a pg:StereoGroup , pg:OutputGroup ;\n"
                 "    lv2:symbol \"out\" ;\n"
                 "    rdfs:label \"Output\" .\n\n";
         }
         
-        ttl += uri + " a lv2:Plugin ;\n";
+        ttl += uri;
         
         if (classes.count(lpi.plugin_type))
-            ttl += "    a " + classes[lpi.plugin_type]+" ;\n";
-        
+            ttl += " a lv2:Plugin, " + classes[lpi.plugin_type]+" ;\n";
+        else
+            ttl += " a lv2:Plugin ;\n";
             
-        ttl += "    doap:name \""+string(lpi.name)+"\" ;\n";
-        ttl += "    doap:maintainer [ foaf:name \""+string(lpi.maker)+"\" ; ] ;\n";
+        ttl += "    doap:name \"" + string(lpi.name) + "\" ;\n";
+        ttl += "    doap:license <http://usefulinc.com/doap/licenses/lgpl> ;\n";
+        ttl += "    doap:maintainer <http://calf.sourceforge.net/team> ;\n";
 
 #if USE_LV2_GUI
-        ttl += "    uiext:ui <http://calf.sourceforge.net/plugins/gui/gtk2-gui> ;\n";
-        ttl += "    lv2:optionalFeature <http://lv2plug.in/ns/ext/instance-access> ;\n";
-        ttl += "    lv2:optionalFeature <http://lv2plug.in/ns/ext/data-access> ;\n";
+        ttl += "    uiext:ui " + gui_uri + " ;\n";
 #endif
         
-        ttl += "    doap:license <http://usefulinc.com/doap/licenses/lgpl> ;\n";
         ttl += "    dct:replaces <urn:ladspa:" + i2s(lpi.unique_id) + "> ;\n";
         // XXXKF not really optional for now, to be honest
         ttl += "    lv2:optionalFeature epp:supportsStrictBounds ;\n";
@@ -351,8 +392,15 @@ void make_ttl(string path_prefix, const string *data_dir)
         for (int i = 0; i < pi->get_param_count(); i++)
             if (add_ctl_port(ports, *pi->get_param_props(i), pn, pi, i))
                 pn++;
-        if (pi->get_midi()) {
-            add_port(ports, "midi_in", "MIDI", "Input", pn++, "atom:AtomPort", true);
+        bool needs_event_io = pi->sends_live_updates();
+        if (pi->get_midi() || needs_event_io) {
+            if (pi->get_midi())
+                add_port(ports, "midi_in", "MIDI In", "Input", pn++, "atom:AtomPort", true);
+            else
+                add_port(ports, "events_in", "Events", "Input", pn++, "atom:AtomPort", true);
+        }
+        if (needs_event_io) {
+            add_port(ports, "events_out", "Events", "Output", pn++, "atom:AtomPort", true);
         }
         if (!ports.empty())
             ttl += "    lv2:port " + ports + "\n";
@@ -401,7 +449,9 @@ void make_ttl(string path_prefix, const string *data_dir)
         string uri = "<http://calf.sourceforge.net/factory_presets#"
             + pr.plugin + "_" + pr.get_safe_name()
             + ">";
-        ttl += ilm->second.second + " lv2p:hasPreset\n    " + uri + " .\n";
+        ttl += uri + " a lv2p:Preset ;\n"
+            "    lv2:appliesTo " + ilm->second.second + " ;\n"
+            "    rdfs:seeAlso <presets-" + ilm->second.first + ".ttl> .\n";
         
         presets_ttl += uri + 
             " a lv2p:Preset ;\n"

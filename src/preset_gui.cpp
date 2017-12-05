@@ -105,7 +105,7 @@ void gui_preset_access::store_preset()
         }
         if (found)
         {
-            GtkWidget *dialog = gtk_message_dialog_new(gui->window->toplevel, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_QUESTION, GTK_BUTTONS_OK_CANCEL, 
+            GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(gui->window->toplevel), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_QUESTION, GTK_BUTTONS_OK_CANCEL, 
                 "Preset '%s' already exists. Overwrite?", sp.name.c_str());
             int response = gtk_dialog_run(GTK_DIALOG(dialog));
             gtk_widget_destroy(dialog);
@@ -115,8 +115,8 @@ void gui_preset_access::store_preset()
         tmp.add(sp);
         get_user_presets() = tmp;
         get_user_presets().save(tmp.get_preset_filename(false).c_str());
-        if (gui->window->main)
-            gui->window->main->refresh_all_presets(false);
+        if (gui->window->get_main_window())
+            gui->window->get_main_window()->refresh_all_presets(false);
     }
     g_object_unref(G_OBJECT(store_preset_builder));
 }

@@ -18,14 +18,7 @@
  * Boston, MA  02110-1301  USA
  */
  
-#include <calf/ctl_led.h>
-#include <calf/ctl_vumeter.h>
-#include <calf/giface.h>
-#include <calf/gui.h>
-#include <calf/custom_ctl.h>
-#include <calf/preset.h>
 #include <calf/gtk_main_win.h>
-#include <calf/jackhost.h>
 
 using namespace calf_plugins;
 using namespace std;
@@ -37,6 +30,7 @@ gtk_main_window::gtk_main_window()
     notifier = NULL;
     is_closed = true;
     progress_window = NULL;
+    images = image_factory();
 }
 
 static const char *ui_xml = 
@@ -102,6 +96,28 @@ void gtk_main_window::on_preferences_action(GtkWidget *widget, gtk_main_window *
         g_object_unref(G_OBJECT(prefs_builder));
         return;
     }
+    
+    // styles selector
+    GtkCellRenderer *cell;
+    GtkListStore *styles = main->get_styles();
+    GtkComboBox *cb = GTK_COMBO_BOX(gtk_builder_get_object(prefs_builder, "rcstyles"));
+    gtk_combo_box_set_model(cb, GTK_TREE_MODEL(styles));
+    cell = gtk_cell_renderer_text_new();
+    gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(cb), cell, TRUE);
+    gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(cb), cell, "text", 0, NULL);
+    GtkTreeIter iter;
+    gboolean valid = gtk_tree_model_get_iter_first(GTK_TREE_MODEL(styles), &iter);
+    while (valid) {
+        GValue path = G_VALUE_INIT;
+        gtk_tree_model_get_value(GTK_TREE_MODEL(styles), &iter, 1, &path);
+        if (main->get_config()->style.compare(g_value_get_string(&path)) == 0) {
+            gtk_combo_box_set_active_iter(cb, &iter);
+            break;
+        }
+        valid = gtk_tree_model_iter_next(GTK_TREE_MODEL(styles), &iter);
+        g_value_unset(&path);
+    }
+    
     GtkWidget *preferences_dlg = GTK_WIDGET(gtk_builder_get_object(prefs_builder, "preferences"));
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(gtk_builder_get_object(prefs_builder, "show-rack-ears")), main->get_config()->rack_ears);
     gtk_spin_button_set_range(GTK_SPIN_BUTTON(gtk_builder_get_object(prefs_builder, "rack-float")), 0, 1);
@@ -114,11 +130,18 @@ void gtk_main_window::on_preferences_action(GtkWidget *widget, gtk_main_window *
     int response = gtk_dialog_run(GTK_DIALOG(preferences_dlg));
     if (response == GTK_RESPONSE_OK)
     {
+        GValue path_ = G_VALUE_INIT;
+        GtkTreeIter iter;
+        gtk_combo_box_get_active_iter(cb, &iter);
+        gtk_tree_model_get_value(GTK_TREE_MODEL(styles), &iter, 1, &path_);
         main->get_config()->rack_ears = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(gtk_builder_get_object(prefs_builder, "show-rack-ears")));
         main->get_config()->rack_float = gtk_spin_button_get_value(GTK_SPIN_BUTTON(gtk_builder_get_object(prefs_builder, "rack-float")));
         main->get_config()->float_size = gtk_spin_button_get_value(GTK_SPIN_BUTTON(gtk_builder_get_object(prefs_builder, "float-size")));
         main->get_config()->vu_meters = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(gtk_builder_get_object(prefs_builder, "show-vu-meters")));
+        main->get_config()->style = g_value_get_string(&path_);
         main->get_config()->save(main->get_config_db());
+        //main->load_style(g_value_get_string(&path_));
+        g_value_unset(&path_);
     }
     gtk_widget_destroy(preferences_dlg);
     g_object_unref(G_OBJECT(prefs_builder));
@@ -165,6 +188,17 @@ void gtk_main_window::del_plugin(plugin_ctl_iface *plugin)
     sort_strips();
 }
 
+void gtk_main_window::rename_plugin(plugin_ctl_iface *plugin, std::string name)
+{
+    if (!plugins.count(plugin))
+        return;
+    plugin_strip *strip = plugins[plugin];
+    gtk_label_set_text(GTK_LABEL(strip->name), name.c_str());
+    if (strip->gui_win) {
+        gtk_window_set_title(GTK_WINDOW(strip->gui_win->toplevel), ("Calf - " + name).c_str());
+    }
+}
+
 void gtk_main_window::set_window(plugin_ctl_iface *plugin, plugin_gui_window *gui_win)
 {
     if (!plugins.count(plugin))
@@ -174,7 +208,7 @@ void gtk_main_window::set_window(plugin_ctl_iface *plugin, plugin_gui_window *gu
         return;
     strip->gui_win = gui_win;
     if (!is_closed)
-        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(strip->button), gui_win != NULL);    
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(strip->button), gui_win != NULL ? TRUE : FALSE);    
 }
 
 void gtk_main_window::refresh_all_presets(bool builtin_too)
@@ -190,10 +224,9 @@ void gtk_main_window::refresh_all_presets(bool builtin_too)
 }
 
 static gboolean
-gui_button_pressed(GtkWidget *button, plugin_strip *strip)
+gui_button_pressed(GtkToggleButton *button, plugin_strip *strip)
 {
-    GtkToggleButton *tb = GTK_TOGGLE_BUTTON(button);
-    if ((gtk_toggle_button_get_active(tb) != 0) == (strip->gui_win != NULL))
+    if (gtk_toggle_button_get_active(button) == (strip->gui_win != NULL))
         return FALSE;
     if (strip->gui_win) {
         strip->gui_win->close();
@@ -206,7 +239,6 @@ gui_button_pressed(GtkWidget *button, plugin_strip *strip)
 static gboolean
 connect_button_pressed(GtkWidget *button, plugin_strip *strip)
 {
-    //GtkToggleButton *tb = GTK_TOGGLE_BUTTON(button);
     if (strip->connector) {
         strip->connector->close();
         strip->connector = NULL;
@@ -230,13 +262,13 @@ void gtk_main_window::show_rack_ears(bool show)
     {
         if (show)
         {
-            gtk_widget_show(i->second->leftBox);
-            gtk_widget_show(i->second->rightBox);
+            gtk_widget_show(i->second->leftBG);
+            gtk_widget_show(i->second->rightBG);
         }
         else
         {
-            gtk_widget_hide(i->second->leftBox);
-            gtk_widget_hide(i->second->rightBox);
+            gtk_widget_hide(i->second->leftBG);
+            gtk_widget_hide(i->second->rightBG);
         }
     }
 }
@@ -262,8 +294,73 @@ void gtk_main_window::show_vu_meters(bool show)
     }
 }
 
+void gtk_main_window::on_edit_title(GtkWidget *ebox, GdkEventButton *event, plugin_strip *strip) {
+    gtk_entry_set_text(GTK_ENTRY(strip->entry), gtk_label_get_text(GTK_LABEL(strip->name)));
+    gtk_widget_grab_focus(strip->entry);
+    gtk_widget_hide(strip->name);
+    gtk_widget_show(strip->entry);
+}
+
+void gtk_main_window::on_activate_entry(GtkWidget *entry, plugin_strip *strip) {
+    const char *txt = gtk_entry_get_text(GTK_ENTRY(entry));
+    const char *old = gtk_label_get_text(GTK_LABEL(strip->name));
+    if (strcmp(old, txt) and strlen(txt))
+        strip->main_win->owner->rename_plugin(strip->plugin, txt);
+    gtk_widget_hide(strip->entry);
+    gtk_widget_show(strip->name);
+}
+gboolean gtk_main_window::on_blur_entry(GtkWidget *entry, GdkEvent *event, plugin_strip *strip) {
+    gtk_widget_hide(strip->entry);
+    gtk_widget_show(strip->name);
+    return FALSE;
+}
+
+GtkWidget *gtk_main_window::create_vu_meter() {
+    GtkWidget *vu = calf_vumeter_new();
+    calf_vumeter_set_falloff(CALF_VUMETER(vu), 2.5);
+    calf_vumeter_set_hold(CALF_VUMETER(vu), 1.5);
+    calf_vumeter_set_width(CALF_VUMETER(vu), 100);
+    calf_vumeter_set_height(CALF_VUMETER(vu), 12);
+    calf_vumeter_set_position(CALF_VUMETER(vu), 2);
+    return vu;
+}
+
+GtkWidget *gtk_main_window::create_meter_scale() {
+    GtkWidget *vu = calf_meter_scale_new();
+    CalfMeterScale *ms = CALF_METER_SCALE(vu);
+    const unsigned long sz = 7;
+    const double cv[sz] = {0., 0.0625, 0.125, 0.25, 0.5, 0.71, 1.};
+    const vector<double> ck(cv, &cv[sz]);
+    ms->marker   = ck;
+    ms->dots     = 1;
+    ms->position = 2;
+    gtk_widget_set_name(vu, "Calf-MeterScale");
+    return vu;
+}
+
+void gtk_main_window::on_table_clicked(GtkWidget *table, GdkEvent *event) {
+    gtk_widget_grab_focus(table);
+}
+
 plugin_strip *gtk_main_window::create_strip(jack_host *plugin)
 {
+    /*    0          1    2             3      4          5           6          7
+     *  0 ┌──────────┬────────────────────────────────────────────────┬──────────┐ 0
+     *    │          │                   top light                    │          │
+     *  1 │          ├────┬─────────────┬──────┬──────────┬───────────┤          │ 1
+     *    │          │    │             │      │          │           │          │
+     *    │          │ X  │    label    │ MIDI │  inputs  │  outputs  │          │
+     *    │          │    │             │      │          │           │          │
+     *  2 │   left   ├────┼─────────────┼──────┼──────────┼───────────┤   right  │ 2
+     *    │   box    │    ╎             ╎      ╎          ╎           │    box   │
+     *    │          │   buttons and params    ╎          ╎           │          │
+     *    │          │    ╎             ╎      ╎          ╎           │          │
+     *  3 │          ├────┴─────────────┴──────┴──────────┴───────────┤          │ 3
+     *    │          │                  bottom light                  │          │
+     *  4 └──────────┴────────────────────────────────────────────────┴──────────┘ 4
+     *    0          1    2             3      4          5           6          7
+     */
+    
     plugin_strip *strip = new plugin_strip;
     strip->main_win = this;
     strip->plugin = plugin;
@@ -271,127 +368,150 @@ plugin_strip *gtk_main_window::create_strip(jack_host *plugin)
     strip->connector = NULL;
     strip->id = plugins.size();
     
+    const plugin_metadata_iface *metadata = plugin->get_metadata_iface();
     GtkAttachOptions ao = (GtkAttachOptions)(GTK_EXPAND | GTK_FILL);
     
-    strip->strip_table = gtk_table_new(6, 4, FALSE);
+    strip->strip_table = gtk_table_new(7, 4, FALSE);
     gtk_table_set_col_spacings(GTK_TABLE(strip->strip_table), 0);
     gtk_table_set_row_spacings(GTK_TABLE(strip->strip_table), 0);
     
-    int row = 0;
-//    g_object_get(G_OBJECT(strips_table), "n-rows", &row, "n-columns", &cols, NULL);
-//    gtk_table_resize(GTK_TABLE(strips_table), row + 4, cols);
-//    printf("%03d %03d", row, cols);
     // images for left side
-    GtkWidget *nwImg     = gtk_image_new_from_file(PKGLIBDIR "/side_d_nw.png");
-    GtkWidget *swImg     = gtk_image_new_from_file(PKGLIBDIR "/side_d_sw.png");
-    GtkWidget *wImg      = gtk_image_new_from_file(PKGLIBDIR "/side_d_w.png");
+    GtkWidget *nwImg     = gtk_image_new_from_pixbuf(images.get("side_d_nw"));
+    GtkWidget *swImg     = gtk_image_new_from_pixbuf(images.get("side_d_sw"));
+    GtkWidget *wImg      = gtk_image_new_from_pixbuf(images.get("side_d_w"));
     gtk_widget_set_size_request(GTK_WIDGET(wImg), 56, 1);
     
     // images for right side
-    GtkWidget *neImg     = gtk_image_new_from_file(PKGLIBDIR "/side_d_ne.png");
-    GtkWidget *seImg     = gtk_image_new_from_file(PKGLIBDIR "/side_d_se.png");
-    GtkWidget *eImg      = gtk_image_new_from_file(PKGLIBDIR "/side_d_e.png");
+    GtkWidget *neImg     = gtk_image_new_from_pixbuf(images.get("side_d_ne"));
+    GtkWidget *seImg     = gtk_image_new_from_pixbuf(images.get("side_d_se"));
+    GtkWidget *eImg      = gtk_image_new_from_pixbuf(images.get("side_d_e"));
     gtk_widget_set_size_request(GTK_WIDGET(eImg), 56, 1);
     
-    // pack left box
+    // pack left box @ 0, 0
+    GtkWidget *leftBG  = gtk_event_box_new();
     GtkWidget *leftBox = gtk_vbox_new(FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(leftBG), leftBox);
+    gtk_widget_set_name(leftBG, "CalfMainLeft");
     gtk_box_pack_start(GTK_BOX(leftBox), GTK_WIDGET(nwImg), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(leftBox), GTK_WIDGET(wImg), TRUE, TRUE, 0);
     gtk_box_pack_end(GTK_BOX(leftBox), GTK_WIDGET(swImg), FALSE, FALSE, 0);
-    gtk_widget_show_all(GTK_WIDGET(leftBox));
+    gtk_widget_show_all(GTK_WIDGET(leftBG));
     if (!get_config()->rack_ears)
-        gtk_widget_hide(GTK_WIDGET(leftBox));
-    gtk_table_attach(GTK_TABLE(strip->strip_table), leftBox, 0, 1, row, row + 4, (GtkAttachOptions)(0), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 0, 0);
+        gtk_widget_hide(GTK_WIDGET(leftBG));
+    gtk_table_attach(GTK_TABLE(strip->strip_table), leftBG, 0, 1, 0, 4, (GtkAttachOptions)(0), ao, 0, 0);
     
      // pack right box
+    GtkWidget *rightBG = gtk_event_box_new();
     GtkWidget *rightBox = gtk_vbox_new(FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(rightBG), rightBox);
+    gtk_widget_set_name(rightBG, "CalfMainRight");
     gtk_box_pack_start(GTK_BOX(rightBox), GTK_WIDGET(neImg), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(rightBox), GTK_WIDGET(eImg), TRUE, TRUE, 0);
     gtk_box_pack_end(GTK_BOX(rightBox), GTK_WIDGET(seImg), FALSE, FALSE, 0);
-    gtk_widget_show_all(GTK_WIDGET(rightBox));
+    gtk_widget_show_all(GTK_WIDGET(rightBG));
     if (!get_config()->rack_ears)
-        gtk_widget_hide(GTK_WIDGET(rightBox));
-    gtk_table_attach(GTK_TABLE(strip->strip_table), rightBox, 5, 6, row, row + 4, (GtkAttachOptions)(0), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 0, 0);
+        gtk_widget_hide(GTK_WIDGET(rightBG));
+    gtk_table_attach(GTK_TABLE(strip->strip_table), rightBG, 6, 7, 0, 4, (GtkAttachOptions)(0), ao, 0, 0);
     
-    strip->leftBox = leftBox;
-    strip->rightBox = rightBox;
-    
+    strip->leftBG = leftBG;
+    strip->rightBG = rightBG;
     
     // top light
-    GtkWidget *topImg     = gtk_image_new_from_file(PKGLIBDIR "/light_top.png");
+    GtkWidget *topImg     = gtk_image_new_from_pixbuf(images.get("light_top"));
     gtk_widget_set_size_request(GTK_WIDGET(topImg), 1, 1);
-    gtk_table_attach(GTK_TABLE(strip->strip_table), topImg, 1, 5, row, row + 1, (GtkAttachOptions)(GTK_EXPAND | GTK_FILL | GTK_SHRINK), (GtkAttachOptions)(0), 0, 0);
+    gtk_table_attach(GTK_TABLE(strip->strip_table), topImg, 1, 6, 0, 1, (GtkAttachOptions)(GTK_EXPAND | GTK_FILL | GTK_SHRINK), (GtkAttachOptions)(0), 0, 0);
     gtk_widget_show(topImg);
-    strip->name = topImg;
-    row ++;
     
-    // title @ 1, 1
-    const plugin_metadata_iface *metadata = plugin->get_metadata_iface();
-    GtkWidget *title = gtk_label_new(NULL);
-    gtk_widget_set_name(GTK_WIDGET(title), "Calf-Rack-Title");
-    gtk_label_set_markup(GTK_LABEL(title), metadata->get_label());
-    gtk_label_set_justify(GTK_LABEL(title), GTK_JUSTIFY_RIGHT);
+    // remove buton 1, 1
+    strip->extra = calf_button_new("×");
+    g_signal_connect(GTK_OBJECT(strip->extra), "clicked", G_CALLBACK(extra_button_pressed), 
+        (plugin_ctl_iface *)strip);
+    gtk_widget_show(strip->extra);
+    gtk_table_attach(GTK_TABLE(strip->strip_table), GTK_WIDGET(strip->extra), 1, 2, 1, 2, (GtkAttachOptions)0, (GtkAttachOptions)0, 5, 5);
+    
+    // title @ 2, 1
+    strip->name = gtk_label_new(NULL);
+    gtk_widget_set_name(GTK_WIDGET(strip->name), "Calf-Rack-Title");
+    gtk_label_set_markup(GTK_LABEL(strip->name), plugin->instance_name.c_str());//metadata->get_label());
+    gtk_label_set_justify(GTK_LABEL(strip->name), GTK_JUSTIFY_RIGHT);
+    
     GtkWidget * align = gtk_alignment_new(0.0, 0.5, 0.0, 0.0);
-    gtk_container_add(GTK_CONTAINER(align), title);
-    gtk_table_attach(GTK_TABLE(strip->strip_table), align, 1, 2, row, row + 1, (GtkAttachOptions)(GTK_FILL), (GtkAttachOptions)(GTK_FILL) , 10, 0);
-    gtk_widget_show_all(align);
+    gtk_widget_set_size_request(align, 180, -1);
+    
+    GtkWidget *ebox = gtk_event_box_new ();
+    gtk_event_box_set_visible_window(GTK_EVENT_BOX(ebox), FALSE);
+    gtk_widget_set_events(ebox, GDK_BUTTON_PRESS_MASK);
+    gtk_signal_connect(GTK_OBJECT(ebox), "button_press_event", GTK_SIGNAL_FUNC(on_edit_title), strip);
+    
+    gtk_container_add(GTK_CONTAINER(align), strip->name);
+    gtk_container_add(GTK_CONTAINER(ebox), align);
+    gtk_table_attach(GTK_TABLE(strip->strip_table), ebox, 2, 3, 1, 2, (GtkAttachOptions)0, ao, 10, 0);
+    gtk_widget_show_all(ebox);
+    
+    strip->entry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(strip->entry), "Calf-Rack-Entry");
+    gtk_widget_set_name(strip->entry, "Calf-Rack-Entry");
+    gtk_widget_set_size_request(strip->entry, 180, -1);
+    gtk_table_attach(GTK_TABLE(strip->strip_table), strip->entry, 2, 3, 1, 2, (GtkAttachOptions)0, ao, 10, 0);
+    gtk_widget_show_all(strip->entry);
+    gtk_signal_connect(GTK_OBJECT(strip->entry), "activate", GTK_SIGNAL_FUNC(on_activate_entry), strip);
+    gtk_signal_connect(GTK_OBJECT(strip->entry), "focus-out-event", GTK_SIGNAL_FUNC(on_blur_entry), strip);
+    gtk_widget_hide(strip->entry);
     
     // open button
-    GtkWidget *label = calf_toggle_button_new("Edit");
-    strip->button = label;
-    gtk_widget_set_size_request(GTK_WIDGET(label), 80, -1);
-    g_signal_connect(GTK_OBJECT(label), "toggled", G_CALLBACK(gui_button_pressed), 
+    strip->button = calf_toggle_button_new("Open");
+    g_signal_connect(GTK_OBJECT(strip->button), "toggled", G_CALLBACK(gui_button_pressed), 
         (plugin_ctl_iface *)strip);
     gtk_widget_show(strip->button);
+    //g_signal_connect (GTK_OBJECT (widget), "value-changed", G_CALLBACK (toggle_value_changed), (gpointer)this);
 
     // connect button
-    GtkWidget *con = calf_toggle_button_new("Connect");
-    strip->con = con;
-    gtk_widget_set_size_request(GTK_WIDGET(con), -1, -1);
-    g_signal_connect(GTK_OBJECT(con), "toggled", G_CALLBACK(connect_button_pressed), 
+    strip->con = calf_toggle_button_new("Connect");
+    g_signal_connect(GTK_OBJECT(strip->con), "toggled", G_CALLBACK(connect_button_pressed), 
         (plugin_ctl_iface *)strip);
     gtk_widget_show(strip->con);
     
-    // delete buton
-    GtkWidget *extra = calf_button_new("Remove");
-    strip->extra = extra;
-    //gtk_widget_set_size_request(GTK_WIDGET(extra), 100, -1);
-    g_signal_connect(GTK_OBJECT(extra), "clicked", G_CALLBACK(extra_button_pressed), 
-        (plugin_ctl_iface *)strip);
-    gtk_widget_show(strip->extra);
-    
     // button box @ 1, 2
+    GtkWidget *balign = gtk_alignment_new(0, 0.8, 0, 0);
     GtkWidget *buttonBox = gtk_hbox_new(FALSE, 5);
     gtk_box_pack_start(GTK_BOX(buttonBox), GTK_WIDGET(strip->button), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(buttonBox), GTK_WIDGET(strip->con), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(buttonBox), GTK_WIDGET(strip->extra), FALSE, FALSE, 0);
-    gtk_table_attach(GTK_TABLE(strip->strip_table), buttonBox, 1, 2, row + 1, row + 2, (GtkAttachOptions)0, (GtkAttachOptions)0, 10, 10);
-    gtk_widget_show(buttonBox);
+    gtk_container_add(GTK_CONTAINER(balign), buttonBox);
+    gtk_table_attach(GTK_TABLE(strip->strip_table), balign, 1, 3, 2, 3, ao, ao, 5, 5);
+    gtk_widget_show_all(balign);
     
-    // midi box
+    // param box
+    GtkWidget *palign = gtk_alignment_new(1, 1, 0, 0);
+    plugin_gui_widget *widget = new plugin_gui_widget(this, this);
+    strip->gui_widget = widget;
+    GtkWidget *paramBox = widget->create(plugin);
+    gtk_container_add(GTK_CONTAINER(palign), paramBox);
+    gtk_table_attach(GTK_TABLE(strip->strip_table), palign, 3, 6, 2, 3, ao, (GtkAttachOptions)0, 5, 5);
+    gtk_widget_show_all(palign);
+    
+    // midi box @ 2, 1
     if (metadata->get_midi()) {
-        label = calf_led_new();
+        GtkWidget *led = calf_led_new();
         GtkWidget *midiBox = gtk_vbox_new(FALSE, 1);
-        gtk_box_pack_start(GTK_BOX(midiBox), GTK_WIDGET(gtk_label_new("Midi")), FALSE, FALSE, 0);
-        gtk_box_pack_start(GTK_BOX(midiBox), GTK_WIDGET(label), FALSE, FALSE, 0);
-        gtk_table_attach(GTK_TABLE(strip->strip_table), midiBox, 2, 3, row, row + 1, (GtkAttachOptions)0, (GtkAttachOptions)0, 5, 3);
-        gtk_widget_set_size_request(GTK_WIDGET(label), 25, 25);
-        strip->midi_in = label;
+        gtk_box_pack_start(GTK_BOX(midiBox), GTK_WIDGET(gtk_label_new("MIDI")), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(midiBox), GTK_WIDGET(led), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(midiBox), gtk_label_new(""), TRUE, TRUE, 0);
+        gtk_table_attach(GTK_TABLE(strip->strip_table), midiBox, 3, 4, 1, 2, (GtkAttachOptions)0, (GtkAttachOptions)0, 5, 3);
+        gtk_widget_set_size_request(GTK_WIDGET(led), 25, 25);
+        strip->midi_in = led;
         gtk_widget_show_all(midiBox);
     } else {
-        label = gtk_label_new("");
-        gtk_table_attach(GTK_TABLE(strip->strip_table), label, 2, 3, row, row + 1, GTK_FILL, GTK_EXPAND, 5, 3);
-        gtk_widget_set_size_request(GTK_WIDGET(label), 25, 25);
-        strip->midi_in = label;
+        GtkWidget *led = gtk_label_new("");
+        gtk_table_attach(GTK_TABLE(strip->strip_table), led, 3, 4, 1, 2, GTK_FILL, GTK_EXPAND, 5, 3);
+        gtk_widget_set_size_request(GTK_WIDGET(led), 25, 25);
+        strip->midi_in = led;
         gtk_widget_show(strip->midi_in);
     }
-    strip->midi_in = label;
     
     strip->inBox = NULL;
     strip->outBox = NULL;
     strip->audio_in.clear();
     strip->audio_out.clear();
-        
+    
+    GtkWidget *vu;
     if (metadata->get_input_count()) {
         
         GtkWidget *inBox  = gtk_vbox_new(FALSE, 1);
@@ -400,25 +520,27 @@ plugin_strip *gtk_main_window::create_strip(jack_host *plugin)
         
         for (int i = 0; i < metadata->get_input_count(); i++)
         {
-            label = calf_vumeter_new();
-            calf_vumeter_set_falloff(CALF_VUMETER(label), 2.5);
-            calf_vumeter_set_hold(CALF_VUMETER(label), 1.5);
-            calf_vumeter_set_width(CALF_VUMETER(label), 100);
-            calf_vumeter_set_height(CALF_VUMETER(label), 12);
-            calf_vumeter_set_position(CALF_VUMETER(label), 2);
-            gtk_box_pack_start(GTK_BOX(inBox), label, TRUE, TRUE, 0);
-            strip->audio_in.push_back(label);
+            vu = create_vu_meter();
+            gtk_box_pack_start(GTK_BOX(inBox), vu, TRUE, TRUE, 0);
+            strip->audio_in.push_back(vu);
         }
+        vu = create_meter_scale();
+        gtk_box_pack_start(GTK_BOX(inBox), vu, TRUE, TRUE, 0);
         
         strip->inBox = gtk_alignment_new(0.f, 0.f, 1.f, 0.f);
         gtk_container_add(GTK_CONTAINER(strip->inBox), inBox);
         
-        gtk_table_attach(GTK_TABLE(strip->strip_table), strip->inBox, 3, 4, row, row + 1, ao, ao, 5, 3);
+        gtk_table_attach(GTK_TABLE(strip->strip_table), strip->inBox, 4, 5, 1, 2, ao, ao, 5, 3);
         
         if (get_config()->vu_meters)
             gtk_widget_show_all(strip->inBox);
             
-        gtk_widget_set_size_request(GTK_WIDGET(strip->inBox), 120, -1);
+        gtk_widget_set_size_request(GTK_WIDGET(strip->inBox), 180, -1);
+    } else {
+        GtkWidget *inBox = gtk_label_new("");
+        gtk_table_attach(GTK_TABLE(strip->strip_table), inBox, 4, 5, 1, 2, GTK_FILL, GTK_EXPAND, 5, 3);
+        gtk_widget_set_size_request(GTK_WIDGET(inBox), 180, -1);
+        gtk_widget_show(inBox);
     }
 
     if (metadata->get_output_count()) {
@@ -429,42 +551,34 @@ plugin_strip *gtk_main_window::create_strip(jack_host *plugin)
         
         for (int i = 0; i < metadata->get_output_count(); i++)
         {
-            label = calf_vumeter_new();
-            calf_vumeter_set_falloff(CALF_VUMETER(label), 2.5);
-            calf_vumeter_set_hold(CALF_VUMETER(label), 1.5);
-            calf_vumeter_set_width(CALF_VUMETER(label), 100);
-            calf_vumeter_set_height(CALF_VUMETER(label), 12);
-            calf_vumeter_set_position(CALF_VUMETER(label), 2);
-            gtk_box_pack_start(GTK_BOX(outBox), label,FALSE, FALSE, 0);
-            strip->audio_out.push_back(label);
+            vu = create_vu_meter();
+            gtk_box_pack_start(GTK_BOX(outBox), vu, TRUE, TRUE, 0);
+            strip->audio_out.push_back(vu);
         }
+        vu = create_meter_scale();
+        gtk_box_pack_start(GTK_BOX(outBox), vu, TRUE, TRUE, 0);
         
         strip->outBox = gtk_alignment_new(0.f, 0.f, 1.f, 0.f);
         gtk_container_add(GTK_CONTAINER(strip->outBox), outBox);
         
-        gtk_table_attach(GTK_TABLE(strip->strip_table), strip->outBox, 4, 5, row, row + 1, ao, ao, 5, 3);
+        gtk_table_attach(GTK_TABLE(strip->strip_table), strip->outBox, 5, 6, 1, 2, ao, ao, 5, 3);
         
         if (get_config()->vu_meters)
             gtk_widget_show_all(strip->outBox);
             
-        gtk_widget_set_size_request(GTK_WIDGET(strip->outBox), 120, -1);
+        gtk_widget_set_size_request(GTK_WIDGET(strip->outBox), 180, -1);
+    } else {
+        GtkWidget *outBox = gtk_label_new("");
+        gtk_table_attach(GTK_TABLE(strip->strip_table), outBox, 5, 6, 1, 2, GTK_FILL, GTK_EXPAND, 5, 3);
+        gtk_widget_set_size_request(GTK_WIDGET(outBox), 180, -1);
+        gtk_widget_show(outBox);
     }
-
-    // other stuff bottom right
-    GtkWidget *paramBox = gtk_hbox_new(FALSE, 0);
     
-    GtkWidget *logoImg     = gtk_image_new_from_file(PKGLIBDIR "/logo_button.png");
-    gtk_box_pack_end(GTK_BOX(paramBox), GTK_WIDGET(logoImg), TRUE, TRUE, 0);
-    
-    gtk_table_attach(GTK_TABLE(strip->strip_table), paramBox, 3, 5, row + 1, row + 2, (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 10, 0);
-    gtk_widget_show_all(GTK_WIDGET(paramBox));
-    
-    row += 2;
     
     // bottom light
-    GtkWidget *botImg     = gtk_image_new_from_file(PKGLIBDIR "/light_bottom.png");
+    GtkWidget *botImg     = gtk_image_new_from_pixbuf(images.get("light_bottom"));
     gtk_widget_set_size_request(GTK_WIDGET(botImg), 1, 1);
-    gtk_table_attach(GTK_TABLE(strip->strip_table), botImg, 1, 5, row, row + 1, (GtkAttachOptions)(GTK_EXPAND | GTK_FILL | GTK_SHRINK), (GtkAttachOptions)(0), 0, 0);
+    gtk_table_attach(GTK_TABLE(strip->strip_table), botImg, 1, 6, 3, 4, (GtkAttachOptions)(GTK_EXPAND | GTK_FILL | GTK_SHRINK), (GtkAttachOptions)(0), 0, 0);
     gtk_widget_show(botImg);
     
     gtk_widget_show(GTK_WIDGET(strip->strip_table));
@@ -514,7 +628,7 @@ void gtk_main_window::open_gui(plugin_ctl_iface *plugin)
 {
     plugin_gui_window *gui_win = new plugin_gui_window(this, this);
     std::string title = "Calf - ";
-    gui_win->create(plugin, (title + plugin->get_metadata_iface()->get_label()).c_str(), plugin->get_metadata_iface()->get_id()); //(owner->get_client_name() + " - " + plugin->get_metadata_iface()->get_label()).c_str(), plugin->get_metadata_iface()->get_id());
+    gui_win->create(plugin, (title + ((jack_host *)plugin)->get_instance_name()).c_str(), plugin->get_metadata_iface()->get_id()); //(owner->get_client_name() + " - " + plugin->get_metadata_iface()->get_label()).c_str(), plugin->get_metadata_iface()->get_id());
     gtk_widget_show(GTK_WIDGET(gui_win->toplevel));
     plugins[plugin]->gui_win = gui_win; 
 }
@@ -631,10 +745,21 @@ void gtk_main_window::create()
     register_icons();
     toplevel = GTK_WINDOW(gtk_window_new (GTK_WINDOW_TOPLEVEL));
     std::string title = "Calf JACK Host";
-    gtk_window_set_title(toplevel, title.c_str()); //(owner->get_client_name() + " - Calf JACK Host").c_str());
-    gtk_widget_set_name(GTK_WIDGET(toplevel), "Calf-Rack");
+    if (!owner->get_client_name().empty())
+        title = title + " - session: " + owner->get_client_name();
+    gtk_window_set_title(toplevel, title.c_str());
     gtk_window_set_icon_name(toplevel, "calf");
     gtk_window_set_role(toplevel, "calf_rack");
+    //due to https://developer.gnome.org/gtk2/stable/GtkWindow.html
+    //gtk_window_set_wmclass (). even though it says not to use this
+    //function, it is the only way to get primitive WMs like fluxbox
+    //to separate calf instances so that it can remember different positions.
+    //Unlike what is stated there gtk_window_set_role() is not 
+    //interpreted correctly by fluxbox and thus wmclass call is not
+    //yet obsolete
+    gtk_window_set_wmclass(toplevel, title.c_str(), "calfjackhost");
+    
+    load_style((PKGLIBDIR "styles/" + get_config()->style).c_str());
     
     is_closed = false;
     gtk_window_set_resizable(toplevel, false);
@@ -677,13 +802,24 @@ void gtk_main_window::create()
     }
     sort_strips();
     
-    gtk_container_add(GTK_CONTAINER(all_vbox), strips_table);
+    GtkWidget *evbox = gtk_event_box_new();
+    gtk_widget_set_name(evbox, "Calf-Rack");
+    gtk_container_add(GTK_CONTAINER(evbox), strips_table);
+    gtk_container_add(GTK_CONTAINER(all_vbox), evbox);
     gtk_container_add(GTK_CONTAINER(toplevel), all_vbox);
+    
+    gtk_signal_connect(GTK_OBJECT(evbox), "button-press-event", GTK_SIGNAL_FUNC(on_table_clicked), NULL);
+    gtk_widget_set_can_focus(evbox, TRUE);
     
     gtk_widget_set_name(GTK_WIDGET(strips_table), "Calf-Container");
     
     gtk_window_add_accel_group(toplevel, gtk_ui_manager_get_accel_group(ui_mgr));
-    gtk_widget_show_all(GTK_WIDGET(toplevel));
+    
+    gtk_widget_show(GTK_WIDGET(toplevel));
+    gtk_widget_show(GTK_WIDGET(strips_table));
+    gtk_widget_show(GTK_WIDGET(evbox));
+    gtk_widget_show(GTK_WIDGET(all_vbox));
+    
     source_id = g_timeout_add_full(G_PRIORITY_DEFAULT, 1000/30, on_idle, this, NULL); // 30 fps should be enough for everybody
     
     notifier = get_config_db()->add_listener(this);
@@ -701,8 +837,24 @@ void gtk_main_window::on_config_change()
 
 void gtk_main_window::refresh_plugin(plugin_ctl_iface *plugin)
 {
-    if (plugins[plugin]->gui_win)
-        plugins[plugin]->gui_win->gui->refresh();
+    if (plugins.count(plugin))
+    {
+        if (plugins[plugin]->gui_win)
+            plugins[plugin]->gui_win->refresh();
+        if (plugins[plugin]->gui_widget)
+            plugins[plugin]->gui_widget->refresh();
+    }
+}
+
+void gtk_main_window::refresh_plugin_param(plugin_ctl_iface *plugin, int param_no)
+{
+    if (plugins.count(plugin))
+    {
+        if (plugins[plugin]->gui_win)
+            plugins[plugin]->gui_win->get_gui()->refresh(param_no);
+        if (plugins[plugin]->gui_widget)
+            plugins[plugin]->gui_widget->get_gui()->refresh(param_no);
+    }
 }
 
 void gtk_main_window::on_closed()
@@ -891,4 +1043,30 @@ void gtk_main_window::show_error(const std::string &text)
     GtkWidget *widget = gtk_message_dialog_new (NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, "%s", text.c_str());
     gtk_dialog_run (GTK_DIALOG (widget));
     gtk_widget_destroy (widget);
+}
+
+GtkListStore *gtk_main_window::get_styles()
+{
+    std::vector <calf_utils::direntry> list = calf_utils::list_directory(PKGLIBDIR"styles");
+    GtkListStore *store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_STRING);
+    for (std::vector<calf_utils::direntry>::iterator i = list.begin(); i != list.end(); i++) {
+        string title = i->name;
+        std::string rcf = i->full_path + "/gtk.rc";
+        ifstream infile(rcf.c_str());
+        if (infile.good()) {
+            string line;
+            getline(infile, line);
+            title = line.substr(1);
+        }
+        gtk_list_store_insert_with_values(store, NULL, -1,
+                                  0, title.c_str(),
+                                  1, i->name.c_str(),
+                                  -1);
+    }
+    return store;
+}
+void gtk_main_window::load_style(std::string path) {
+    gtk_rc_parse((path + "/gtk.rc").c_str());
+    gtk_rc_reset_styles(gtk_settings_get_for_screen(gdk_screen_get_default()));
+    images.set_path(path);
 }

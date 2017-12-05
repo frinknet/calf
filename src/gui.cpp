@@ -31,10 +31,11 @@ using namespace std;
 
 /******************************** GUI proper ********************************/
 
-plugin_gui::plugin_gui(plugin_gui_window *_window)
+plugin_gui::plugin_gui(plugin_gui_widget *_window)
 : last_status_serial_no(0)
 , window(_window)
 {
+    plugin = NULL;
     ignore_stack = 0;
     top_container = NULL;
     param_count = 0;
@@ -81,6 +82,8 @@ control_base *plugin_gui::create_widget_from_xml(const char *element, const char
         return new phase_graph_param_control;
     if (!strcmp(element, "tuner"))
         return new tuner_param_control;
+    if (!strcmp(element, "pattern"))
+        return new pattern_param_control;
     if (!strcmp(element, "keyboard"))
         return new keyboard_param_control;
     if (!strcmp(element, "curve"))
@@ -157,7 +160,7 @@ void plugin_gui::xml_element_start(const char *element, const char *attributes[]
             state = false;
             cond.erase(0, 1);
         }
-        if (window->environment->check_condition(cond.c_str()) == state)
+        if (window->get_environment()->check_condition(cond.c_str()) == state)
             return;
         ignore_stack = 1;
         return;
@@ -220,55 +223,7 @@ GtkWidget *plugin_gui::create_from_xml(plugin_ctl_iface *_plugin, const char *xm
     
     XML_ParserFree(parser);
     last_status_serial_no = plugin->send_status_updates(this, 0);
-    GtkWidget *eventbox  = gtk_event_box_new();
-    GtkWidget *decoTable = gtk_table_new(3, 1, FALSE);
-    
-    // decorations
-    // overall background
-    //GtkWidget *bgImg     = gtk_image_new_from_file(PKGLIBDIR "/background.png");
-    //gtk_widget_set_size_request(GTK_WIDGET(bgImg), 1, 1);
-
-    // images for left side
-    GtkWidget *nwImg     = gtk_image_new_from_file(PKGLIBDIR "/side_nw.png");
-    GtkWidget *swImg     = gtk_image_new_from_file(PKGLIBDIR "/side_sw.png");
-    GtkWidget *wImg      = gtk_image_new_from_file(PKGLIBDIR "/side_w.png");
-    gtk_widget_set_size_request(GTK_WIDGET(wImg), 56, 1);
-    
-    // images for right side
-    GtkWidget *neImg     = gtk_image_new_from_file(PKGLIBDIR "/side_ne.png");
-    GtkWidget *seImg     = gtk_image_new_from_file(PKGLIBDIR "/side_se.png");
-    GtkWidget *eImg      = gtk_image_new_from_file(PKGLIBDIR "/side_e.png");
-    GtkWidget *logoImg   = gtk_image_new_from_file(PKGLIBDIR "/side_e_logo.png");
-    gtk_widget_set_size_request(GTK_WIDGET(eImg), 56, 1);
-    
-    // pack left box
-    leftBox = gtk_vbox_new(FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(leftBox), GTK_WIDGET(nwImg), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(leftBox), GTK_WIDGET(wImg), TRUE, TRUE, 0);
-    gtk_box_pack_end(GTK_BOX(leftBox), GTK_WIDGET(swImg), FALSE, FALSE, 0);
-    
-     // pack right box
-    rightBox = gtk_vbox_new(FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(rightBox), GTK_WIDGET(neImg), FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(rightBox), GTK_WIDGET(eImg), TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(rightBox), GTK_WIDGET(logoImg), FALSE, FALSE, 0);
-    gtk_box_pack_end(GTK_BOX(rightBox), GTK_WIDGET(seImg), FALSE, FALSE, 0);
-    
-    //gtk_table_attach(GTK_TABLE(decoTable), GTK_WIDGET(bgImg),     0, 2, 0, 2, (GtkAttachOptions)(GTK_EXPAND | GTK_SHRINK | GTK_FILL), (GtkAttachOptions)(GTK_EXPAND | GTK_SHRINK | GTK_FILL), 0, 0);
-    gtk_table_attach(GTK_TABLE(decoTable), GTK_WIDGET(leftBox),   0, 1, 0, 1, (GtkAttachOptions)(0), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 0, 0);
-    gtk_table_attach(GTK_TABLE(decoTable), GTK_WIDGET(rightBox),  2, 3, 0, 1, (GtkAttachOptions)(0), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 0, 0);
-        
-    gtk_table_attach(GTK_TABLE(decoTable), top_container->widget, 1, 2, 0, 1, (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 15, 5);
-    gtk_container_add( GTK_CONTAINER(eventbox), decoTable );
-    gtk_widget_set_name( GTK_WIDGET(eventbox), "Calf-Plugin" );
-    
-    // create window with viewport
-//    GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
-//    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
-//    gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(sw), GTK_SHADOW_NONE);
-//    gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(sw), GTK_WIDGET(decoTable));
-    
-    return GTK_WIDGET(eventbox);
+    return top_container->widget;
 }
 
 void plugin_gui::send_configure(const char *key, const char *value)
@@ -318,6 +273,7 @@ void plugin_gui::remove_param_ctl(int param, param_control *ctl)
             if (i != last)
                 std::swap(params[i], params[last]);
             params.erase(params.begin() + last, params.end());
+            last--;
         }
     }
 }
@@ -372,7 +328,12 @@ void plugin_gui::refresh(int param_no, param_control *originator)
 void plugin_gui::set_param_value(int param_no, float value, param_control *originator)
 {
     plugin->set_param_value(param_no, value);
-    refresh(param_no);
+
+    main_window_iface *main = window->get_main_window();
+    if (main)
+        main->refresh_plugin_param(plugin, param_no);
+    else
+        refresh(param_no);
 }
 
 /// Get a radio button group (if it exists) for a parameter
@@ -389,24 +350,6 @@ GSList *plugin_gui::get_radio_group(int param)
 void plugin_gui::set_radio_group(int param, GSList *group)
 {
     param_radio_groups[param] = group;
-}
-
-void plugin_gui::show_rack_ears(bool show)
-{
-    // if hidden, add a no-show-all attribute so that LV2 host doesn't accidentally override
-    // the setting by doing a show_all on the outermost container
-    gtk_widget_set_no_show_all(leftBox, !show);
-    gtk_widget_set_no_show_all(rightBox, !show);
-    if (show)
-    {
-        gtk_widget_show(leftBox);
-        gtk_widget_show(rightBox);
-    }
-    else
-    {
-        gtk_widget_hide(leftBox);
-        gtk_widget_hide(rightBox);
-    }
 }
 
 void plugin_gui::on_automation_add(GtkWidget *widget, void *user_data)
@@ -567,6 +510,8 @@ gui_environment::gui_environment()
     
     config_db = new calf_utils::gkeyfile_config_db(keyfile, filename.c_str(), "gui");
     gui_config.load(config_db);
+    images = image_factory();
+    images.set_path(PKGLIBDIR "styles/" + get_config()->style);
 }
 
 gui_environment::~gui_environment()
@@ -574,4 +519,99 @@ gui_environment::~gui_environment()
     delete config_db;
     if (keyfile)
         g_key_file_free(keyfile);
+}
+
+
+/***************************** Image Factory **************************************/
+GdkPixbuf *image_factory::create_image (string image) {
+    string file = path + "/" + image + ".png";
+    if (access(file.c_str(), F_OK))
+        return NULL;
+    return gdk_pixbuf_new_from_file(file.c_str(), NULL);
+}
+void image_factory::recreate_images () {
+    for (map<string, GdkPixbuf*>::iterator i_ = i.begin(); i_ != i.end(); i_++) {
+        if (i[i_->first])
+            i[i_->first] = create_image(i_->first);
+    }
+}
+void image_factory::set_path (string p) {
+    path = p;
+    recreate_images();
+}
+GdkPixbuf *image_factory::get (string image) {
+    if (!i.count(image))
+        return NULL;
+    if (!i.at(image))
+        i[image] = create_image(image);
+    return i[image];
+}
+gboolean image_factory::available (string image) {
+    string file = path + "/" + image + ".png";
+    if (access(file.c_str(), F_OK))
+        return false;
+    return true;
+}
+image_factory::image_factory (string p) {
+    set_path(p);
+    
+    i["combo_arrow"]              = NULL;
+    i["light_top"]                = NULL;
+    i["light_bottom"]             = NULL;
+    i["notebook_screw"]           = NULL;
+    i["logo_button"]              = NULL;
+    
+    i["knob_1"]                    = NULL;
+    i["knob_2"]                    = NULL;
+    i["knob_3"]                    = NULL;
+    i["knob_4"]                    = NULL;
+    i["knob_5"]                    = NULL;
+    
+    i["side_d_ne"]                = NULL;
+    i["side_d_nw"]                = NULL;
+    i["side_d_se"]                = NULL;
+    i["side_d_sw"]                = NULL;
+    
+    i["side_ne"]                  = NULL;
+    i["side_nw"]                  = NULL;
+    i["side_se"]                  = NULL;
+    i["side_sw"]                  = NULL;
+    i["side_e_logo"]              = NULL;
+    
+    i["slider_1_horiz"]            = NULL;
+    i["slider_1_vert"]             = NULL;
+    i["slider_2_horiz"]            = NULL;
+    i["slider_2_vert"]             = NULL;
+    
+    i["tap_active"]               = NULL;
+    i["tap_inactive"]             = NULL;
+    i["tap_prelight"]             = NULL;
+    
+    i["toggle_0"]                 = NULL;
+    i["toggle_1"]                 = NULL;
+    i["toggle_2"]                 = NULL;
+    
+    i["toggle_2_block"]           = NULL;
+    i["toggle_2_bypass"]          = NULL;
+    i["toggle_2_bypass2"]         = NULL;
+    i["toggle_2_fast"]            = NULL;
+    i["toggle_2_listen"]          = NULL;
+    i["toggle_2_logarithmic"]     = NULL;
+    i["toggle_2_magnetical"]      = NULL;
+    i["toggle_2_mono"]            = NULL;
+    i["toggle_2_muffle"]          = NULL;
+    i["toggle_2_mute"]            = NULL;
+    i["toggle_2_phase"]           = NULL;
+    i["toggle_2_sc_comp"]         = NULL;
+    i["toggle_2_sc_filter"]       = NULL;
+    i["toggle_2_softclip"]        = NULL;
+    i["toggle_2_solo"]            = NULL;
+    i["toggle_2_sync"]            = NULL;
+    i["toggle_2_void"]            = NULL;
+    i["toggle_2_gui"]             = NULL;
+    i["toggle_2_connect"]         = NULL;
+    i["toggle_2_pauseplay"]       = NULL;
+}
+image_factory::~image_factory() {
+    
 }

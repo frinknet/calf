@@ -51,13 +51,27 @@ host_session::host_session(session_environment_iface *se)
     main_win->set_owner(this);
 }
 
-std::string host_session::get_next_instance_name(const std::string &effect_name)
+extern "C" plugin_metadata_iface *create_calf_metadata_by_name(const char *effect_name);
+
+std::string host_session::get_full_plugin_name(const std::string &effect_name)
 {
-    if (!instances.count(effect_name))
+    plugin_metadata_iface *metadata = create_calf_metadata_by_name(effect_name.c_str());
+    if (!metadata)
         return effect_name;
+
+    string full_name = metadata->get_label();
+    delete metadata;
+    return full_name;
+}
+
+std::string host_session::get_next_instance_name(const std::string &instance_name)
+{
+    if (!instances.count(instance_name))
+        return instance_name;
+
     for (int i = 2; ; i++)
     {
-        string tmp = string(effect_name) + " (" + i2s(i) + ")";
+        string tmp = instance_name + " (" + i2s(i) + ")";
         if (!instances.count(tmp))
             return tmp;
     }
@@ -68,7 +82,7 @@ std::string host_session::get_next_instance_name(const std::string &effect_name)
 void host_session::add_plugin(string name, string preset, string instance_name)
 {
     if (instance_name.empty())
-        instance_name = get_next_instance_name(name);
+        instance_name = get_next_instance_name(get_full_plugin_name(name));
     jack_host *jh = create_jack_host(&client, name.c_str(), instance_name, main_win);
     if (!jh) {
         string s = 
@@ -77,7 +91,7 @@ void host_session::add_plugin(string name, string preset, string instance_name)
         ;
         if (!s.empty())
             s = s.substr(0, s.length() - 2);
-        throw text_exception("Unknown plugin name; allowed are: " + s);
+        throw text_exception("Unknown plugin name \"" + name + "\" - allowed are: " + s);
     }
     instances.insert(jh->instance_name);
     jh->create();
@@ -143,10 +157,12 @@ void host_session::session_callback(jack_session_event_t *event, void *arg)
 void host_session::handle_jack_session_event(jack_session_event_t *event)
 {
     try {
-        asprintf(&event->command_line, "%s --load ${SESSION_DIR}" G_DIR_SEPARATOR_S "rack.xml --session-id %s" , calfjackhost_cmd.c_str(), event->client_uuid);
-        string fn = event->session_dir;
-        fn += "rack.xml";
-        save_file(fn.c_str());
+        int size = asprintf(&event->command_line, "%s --load ${SESSION_DIR}" G_DIR_SEPARATOR_S "rack.xml --session-id %s" , calfjackhost_cmd.c_str(), event->client_uuid);
+        if (size > -1) {
+            string fn = event->session_dir;
+            fn += "rack.xml";
+            save_file(fn.c_str());
+        }
     }
     catch(...)
     {
@@ -165,7 +181,7 @@ void host_session::handle_jack_session_event(jack_session_event_t *event)
 
 void host_session::new_plugin(const char *name)
 {
-    jack_host *jh = create_jack_host(&client, name, get_next_instance_name(name), main_win);
+    jack_host *jh = create_jack_host(&client, name, get_next_instance_name(get_full_plugin_name(name)), main_win);
     if (!jh)
         return;
     instances.insert(jh->instance_name);
@@ -192,6 +208,19 @@ void host_session::remove_plugin(plugin_ctl_iface *plugin)
     }
 }
 
+void host_session::rename_plugin(plugin_ctl_iface *plugin, const char *name) {
+    std::string name_ = get_next_instance_name(name);
+    for (unsigned int i = 0; i < plugins.size(); i++) {
+        if (plugins[i] == plugin) {
+            instances.erase(plugins[i]->instance_name);
+            instances.insert(name_);
+            plugins[i]->rename(name_);
+            main_win->rename_plugin(plugin, name_);
+            return;
+        }
+    }
+}
+
 void host_session::remove_all_plugins()
 {
     while(!plugins.empty())
@@ -213,8 +242,8 @@ bool host_session::activate_preset(int plugin_no, const std::string &preset, boo
         if (pvec[i].name == preset && pvec[i].plugin == cur_plugin)
         {
             pvec[i].activate(plugins[plugin_no]);
-            if (gui_win && gui_win->gui)
-                gui_win->gui->refresh();
+            if (gui_win)
+                gui_win->refresh();
             return true;
         }
     }

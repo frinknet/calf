@@ -21,6 +21,7 @@
 #include "config.h"
 #include <calf/gui.h>
 #include <calf/giface.h>
+#include <calf/lv2_atom.h>
 #include <calf/lv2_data_access.h>
 #include <calf/lv2_options.h>
 #include <calf/lv2_ui.h>
@@ -55,9 +56,11 @@ struct plugin_proxy_base
     /// Data access feature instance
     LV2_Extension_Data_Feature *data_access;
     /// URID map feature
-    LV2_URID_Map *urid_map;
+    const LV2_URID_Map *urid_map;
     /// External UI host feature (must be set when instantiating external UI plugins)
     lv2_external_ui_host *ext_ui_host;
+    bool atom_present;
+    uint32_t property_type, string_type, event_transfer;
     
     /// Instance pointer - usually NULL unless the host supports instance-access extension
     plugin_ctl_iface *instance;
@@ -73,6 +76,8 @@ struct plugin_proxy_base
     int param_offset;
     /// Signal handler for main widget destroyed
     gulong widget_destroyed_signal;
+    /// Signal handler for external window destroyed
+    gulong window_destroyed_signal;
     
     plugin_proxy_base(const plugin_metadata_iface *metadata, LV2UI_Write_Function wf, LV2UI_Controller c, const LV2_Feature* const* features);
 
@@ -81,7 +86,10 @@ struct plugin_proxy_base
     
     /// Send a string value to a string port in the host, by name (configure-like mechanism)
     char *configure(const char *key, const char *value);
-    
+
+    /// Obtain the list of variables from the plugin
+    void send_configures(send_configure_iface *sci);
+
     /// Enable sending to host for all ports
     void enable_all_sends();
     
@@ -97,23 +105,27 @@ struct plugin_proxy_base
     /// Map an URI to an integer value using a given URID map
     uint32_t map_urid(const char *uri);
 
+
 };
 
 plugin_proxy_base::plugin_proxy_base(const plugin_metadata_iface *metadata, LV2UI_Write_Function wf, LV2UI_Controller c, const LV2_Feature* const* features)
+  : instance_handle(NULL),
+    data_access(NULL),
+    urid_map(NULL),
+    ext_ui_host(NULL),
+    instance(NULL)
 {
     plugin_metadata = metadata;
     
     write_function = wf;
     controller = c;
-
-    instance = NULL;
-    instance_handle = NULL;
-    data_access = NULL;
-    ext_ui_host = NULL;
+    
+    atom_present = true; // XXXKF
     
     param_count = metadata->get_param_count();
     param_offset = metadata->get_param_port_offset();
     widget_destroyed_signal = 0;
+    window_destroyed_signal = 0;
     
     /// Block all updates until GUI is ready
     sends.resize(param_count, false);
@@ -186,10 +198,51 @@ const phase_graph_iface *plugin_proxy_base::get_phase_graph_iface() const
 
 char *plugin_proxy_base::configure(const char *key, const char *value)
 {
-    if (instance)
+    if (atom_present && event_transfer && string_type && property_type)
+    {
+        std::string pred = std::string("urn:calf:") + key;
+        uint32_t ss = strlen(value);
+        uint32_t ts = ss + 1 + sizeof(LV2_Atom_Property);
+        char *temp = new char[ts];
+        LV2_Atom_Property *prop = (LV2_Atom_Property *)temp;
+        prop->atom.type = property_type;
+        prop->atom.size = ts - sizeof(LV2_Atom);
+        prop->body.key = map_urid(pred.c_str());
+        prop->body.context = 0;
+        prop->body.value.size = ss + 1;
+        prop->body.value.type = string_type;
+        memcpy(temp + sizeof(LV2_Atom_Property), value, ss + 1);
+        write_function(controller, param_count + param_offset, ts, event_transfer, temp);
+        delete []temp;
+        return NULL;
+    }
+    else if (instance)
         return instance->configure(key, value);
     else
         return strdup("Configuration not available because of lack of instance-access/data-access");
+}
+
+void plugin_proxy_base::send_configures(send_configure_iface *sci)
+{
+    if (atom_present && event_transfer && string_type && property_type)
+    {
+        struct event_content
+        {
+            LV2_Atom_String str;
+            char buf[8];
+        } ec;
+        ec.str.atom.type = string_type;
+        ec.str.atom.size = 2;
+        strcpy(ec.buf, "?");
+        write_function(controller, param_count + param_offset, sizeof(LV2_Atom_String) + 2, event_transfer, &ec);
+    }
+    else if (instance)
+    {
+        fprintf(stderr, "Send configures...\n");
+        instance->send_configures(sci);
+    }
+    else
+        fprintf(stderr, "Configuration not available because of lack of instance-access/data-access\n");
 }
 
 void plugin_proxy_base::enable_all_sends()
@@ -213,6 +266,7 @@ struct lv2_plugin_proxy: public plugin_ctl_iface, public plugin_proxy_base, publ
     : plugin_proxy_base(md, wf, c, f)
     {
         gui = NULL;
+        source_id = 0;
         if (instance)
         {
             conditions.insert("directlink");
@@ -244,14 +298,8 @@ struct lv2_plugin_proxy: public plugin_ctl_iface, public plugin_proxy_base, publ
     virtual float get_level(unsigned int port) { return 0.f; }
     virtual void execute(int command_no) { assert(0); }
     virtual void send_configures(send_configure_iface *sci)
-    {    
-        if (instance)
-        {
-            fprintf(stderr, "Send configures...\n");
-            instance->send_configures(sci);
-        }
-        else
-            fprintf(stderr, "Configuration not available because of lack of instance-access/data-access\n");
+    {
+        plugin_proxy_base::send_configures(sci);
     }
     virtual int send_status_updates(send_updates_iface *sui, int last_serial)
     { 
@@ -305,21 +353,27 @@ LV2UI_Handle gui_instantiate(const struct _LV2UI_Descriptor* descriptor,
     if (!proxy)
         return NULL;
     
-    gtk_rc_parse(PKGLIBDIR "calf.rc");
-    
     plugin_gui_window *window = new plugin_gui_window(proxy, NULL);
     plugin_gui *gui = new plugin_gui(window);
-    const char *xml = proxy->plugin_metadata->get_gui_xml();
+    
+    const char *xml = proxy->plugin_metadata->get_gui_xml("gui");
     assert(xml);
     gui->optwidget = gui->create_from_xml(proxy, xml);
     proxy->enable_all_sends();
-    proxy->send_configures(gui);
     if (gui->optwidget)
     {
+        GtkWidget *decoTable = window->decorate(gui->optwidget);
+        GtkWidget *eventbox  = gtk_event_box_new();
+        gtk_widget_set_name( GTK_WIDGET(eventbox), "Calf-Plugin" );
+        gtk_container_add( GTK_CONTAINER(eventbox), decoTable );
+        gtk_widget_show_all(eventbox);
+        gui->optwidget = eventbox;
         proxy->source_id = g_timeout_add_full(G_PRIORITY_LOW, 1000/30, plugin_on_idle, gui, NULL); // 30 fps should be enough for everybody    
         proxy->widget_destroyed_signal = g_signal_connect(G_OBJECT(gui->optwidget), "destroy", G_CALLBACK(on_gui_widget_destroy), (gpointer)gui);
     }
-    gui->show_rack_ears(proxy->get_config()->rack_ears);
+    std::string rcf = PKGLIBDIR "/styles/" + proxy->get_config()->style + "/gtk.rc";
+    gtk_rc_parse(rcf.c_str());
+    window->show_rack_ears(proxy->get_config()->rack_ears);
     
     *(GtkWidget **)(widget) = gui->optwidget;
 
@@ -339,6 +393,12 @@ LV2UI_Handle gui_instantiate(const struct _LV2UI_Descriptor* descriptor,
         return (LV2UI_Handle)gui;
 
     const uint32_t uridWindowTitle = uridMap->map(uridMap->handle, LV2_UI__windowTitle);
+    proxy->string_type = uridMap->map(uridMap->handle, LV2_ATOM__String);
+    proxy->property_type = uridMap->map(uridMap->handle, LV2_ATOM__Property);
+    proxy->event_transfer = uridMap->map(uridMap->handle, LV2_ATOM__eventTransfer);
+    proxy->urid_map = uridMap;
+
+    proxy->send_configures(gui);
 
     if (!uridWindowTitle)
         return (LV2UI_Handle)gui;
@@ -370,10 +430,16 @@ void gui_cleanup(LV2UI_Handle handle)
     }
     gui->destroy_child_widgets(gui->optwidget);
     gui->optwidget = NULL;
-    if (gui->optwindow)
-        gtk_widget_destroy(gui->optwindow);
+
     if (gui->opttitle)
+    {
         free((void*)gui->opttitle);
+
+        // idle is no longer called after this, so make sure all events are handled now
+        while (gtk_events_pending())
+            gtk_main_iteration();
+    }
+
     delete gui;
 }
 
@@ -387,7 +453,22 @@ void gui_port_event(LV2UI_Handle handle, uint32_t port, uint32_t buffer_size, ui
     float v = *(float *)buffer;
     int param = port - proxy->plugin_metadata->get_param_port_offset();
     if (param < 0 || param >= proxy->plugin_metadata->get_param_count())
+    {
+        if (format == proxy->event_transfer)
+        {
+            LV2_Atom *atom = (LV2_Atom *)buffer;
+            if (atom->type == proxy->string_type)
+                printf("Param %d string %s\n", param, (char *)LV2_ATOM_CONTENTS(LV2_Atom_String, atom));
+            else if (atom->type == proxy->property_type)
+            {
+                LV2_Atom_Property_Body *prop = (LV2_Atom_Property_Body *)LV2_ATOM_BODY(atom);
+                printf("Param %d key %d string %s\n", param, prop->key, (const char *)LV2_ATOM_CONTENTS(LV2_Atom_Property, atom));
+            }
+            else
+                printf("Param %d type %d\n", param, atom->type);
+        }
         return;
+    }
     if (!proxy->sends[param])
         return;
     if (fabs(gui->plugin->get_param_value(param) - v) < 0.00001)
@@ -409,11 +490,12 @@ void gui_destroy(GtkWidget*, gpointer data)
 int gui_show(LV2UI_Handle handle)
 {
     plugin_gui *gui = (plugin_gui *)handle;
+    lv2_plugin_proxy *proxy = dynamic_cast<lv2_plugin_proxy *>(gui->plugin);
 
     if (! gui->optwindow)
     {
         gui->optwindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-        g_signal_connect(G_OBJECT(gui->optwindow), "destroy", G_CALLBACK(gui_destroy), (gpointer)gui);
+        proxy->window_destroyed_signal = g_signal_connect(G_OBJECT(gui->optwindow), "destroy", G_CALLBACK(gui_destroy), (gpointer)gui);
 
         if (gui->optwidget)
             gtk_container_add(GTK_CONTAINER(gui->optwindow), gui->optwidget);
@@ -433,9 +515,22 @@ int gui_show(LV2UI_Handle handle)
 int gui_hide(LV2UI_Handle handle)
 {
     plugin_gui *gui = (plugin_gui *)handle;
+    lv2_plugin_proxy *proxy = dynamic_cast<lv2_plugin_proxy *>(gui->plugin);
 
     if (gui->optwindow)
+    {
+        g_signal_handler_disconnect(gui->optwindow, proxy->window_destroyed_signal);
+        proxy->window_destroyed_signal = 0;
+
         gtk_widget_hide_all(gui->optwindow);
+        gtk_widget_destroy(gui->optwindow);
+        gui->optwindow = NULL;
+        gui->optclosed = true;
+
+        // idle is no longer called after this, so make sure all events are handled now
+        while (gtk_events_pending())
+            gtk_main_iteration();
+    }
 
     return 0;
 }
@@ -474,6 +569,15 @@ const LV2UI_Descriptor* lv2ui_descriptor(uint32_t index)
     gtkgui.extension_data = gui_extension;
     if (!index--)
         return &gtkgui;
+    
+    static LV2UI_Descriptor gtkguireq;
+    gtkguireq.URI = "http://calf.sourceforge.net/plugins/gui/gtk2-gui-req";
+    gtkguireq.instantiate = gui_instantiate;
+    gtkguireq.cleanup = gui_cleanup;
+    gtkguireq.port_event = gui_port_event;
+    gtkguireq.extension_data = gui_extension;
+    if (!index--)
+        return &gtkguireq;
     
     return NULL;
 }

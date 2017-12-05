@@ -15,6 +15,7 @@
     // Simulator
     PER_MODULE_ITEM(rotary_speaker,      false, "rotaryspeaker")
     PER_MODULE_ITEM(tapesimulator,       false, "tapesimulator")
+    PER_MODULE_ITEM(vinyl,               false, "vinyl")
     
     // Reverb
     PER_MODULE_ITEM(reverb,              false, "reverb")
@@ -69,6 +70,8 @@
     // Spatial
     PER_MODULE_ITEM(stereo,              false, "stereo")
     PER_MODULE_ITEM(haas_enhancer,       false, "haasenhancer")
+    PER_MODULE_ITEM(multibandenhancer,   false, "multibandenhancer")
+    PER_MODULE_ITEM(multispread,         false, "multispread")
     
     // Utility
     PER_MODULE_ITEM(mono,                false, "mono")
@@ -83,6 +86,8 @@
     // Pitch tools
     PER_MODULE_ITEM(pitch,               false, "pitch")
     PER_MODULE_ITEM(trigger,             false, "trigger")
+    // Widget tester
+    //PER_MODULE_ITEM(widgets,             false, "widgets")
 #endif
 
 #undef PER_MODULE_ITEM

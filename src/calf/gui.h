@@ -40,6 +40,20 @@ public:
     bool check_redraw(GtkWidget *toplevel);
 };
 
+
+struct image_factory
+{
+    std::string path;
+    std::map<std::string, GdkPixbuf*> i;
+    GdkPixbuf *create_image (std::string image);
+    void recreate_images ();
+    void set_path (std::string p);
+    GdkPixbuf *get (std::string image);
+    gboolean available (std::string image);
+    image_factory (std::string p = "");
+    ~image_factory();
+};
+
 class plugin_gui;
 class jack_host;
 
@@ -121,6 +135,7 @@ public:
 };
 
 
+class plugin_gui_widget;
 class plugin_gui_window;
 
 class plugin_gui: public send_configure_iface, public send_updates_iface
@@ -134,7 +149,6 @@ protected:
     int ignore_stack;
     int last_status_serial_no;
     std::map<int, GSList *> param_radio_groups;
-    GtkWidget *leftBox, *rightBox;
     int context_menu_param_no;
     uint32_t context_menu_last_designator;
     std::vector<control_base *> stack;
@@ -153,21 +167,21 @@ protected:
     static void on_automation_set_upper(GtkWidget *widget, void *user_data);
     void on_automation_set_lower_or_upper(automation_menu_entry *ame, bool is_upper);
 public:
-    plugin_gui_window *window;
+    plugin_gui_widget *window;
     GtkWidget *container;
     const char *effect_name;
     plugin_ctl_iface *plugin;
     preset_access_iface *preset_access;
     std::vector<param_control *> params;
     std::vector<int> read_serials;
-
+    
     /* For optional lv2ui:show interface. */
     bool optclosed;
     GtkWidget* optwidget;
     GtkWidget* optwindow;
     const char* opttitle;
 
-    plugin_gui(plugin_gui_window *_window);
+    plugin_gui(plugin_gui_widget *_window);
     GtkWidget *create_from_xml(plugin_ctl_iface *_plugin, const char *xml);
     control_base *create_widget_from_xml(const char *element, const char *attributes[]);
 
@@ -187,8 +201,6 @@ public:
     GSList *get_radio_group(int param);
     /// Set a radio button group for a parameter
     void set_radio_group(int param, GSList *group);
-    /// Show rack ear widgets
-    void show_rack_ears(bool show);
     /// Pop-up a context menu for a control
     void on_control_popup(param_control *ctl, int param_no);
     /// Clean up callback data allocated for the automation pop-up menu
@@ -200,8 +212,8 @@ public:
     static void xml_element_end(void *data, const char *element);
 };
 
-class main_window_iface;
-class main_window_owner_iface;
+struct main_window_iface;
+struct main_window_owner_iface;
 
 /// A class used to inform the plugin GUIs about the environment they run in
 /// (currently: what plugin features are accessible)
@@ -210,6 +222,7 @@ struct gui_environment_iface
     virtual bool check_condition(const char *name) = 0;
     virtual calf_utils::config_db_iface *get_config_db() = 0;
     virtual calf_utils::gui_config *get_config() = 0;
+    virtual calf_plugins::image_factory *get_image_factory() = 0;
     virtual ~gui_environment_iface() {}
 };
 
@@ -234,15 +247,14 @@ private:
     GKeyFile *keyfile;
     calf_utils::config_db_iface *config_db;
     calf_utils::gui_config gui_config;
-
 public:
     std::set<std::string> conditions;
-
-public:
+    image_factory images;
     gui_environment();
     virtual bool check_condition(const char *name) { return conditions.count(name) != 0; }
     virtual calf_utils::config_db_iface *get_config_db() { return config_db; }
     virtual calf_utils::gui_config *get_config() { return &gui_config; }
+    virtual calf_plugins::image_factory *get_image_factory() { return &images; }
     ~gui_environment();
 };
 
@@ -259,8 +271,12 @@ struct main_window_iface: public progress_report_iface
     virtual void add_plugin(jack_host *plugin) = 0;
     /// Remove the plugin from the window
     virtual void del_plugin(plugin_ctl_iface *plugin) = 0;
+    // Rename the plugin
+    virtual void rename_plugin(plugin_ctl_iface *plugin, std::string name) = 0;
     /// Refresh the plugin UI
     virtual void refresh_plugin(plugin_ctl_iface *plugin) = 0;
+    /// Refresh the plugin UI
+    virtual void refresh_plugin_param(plugin_ctl_iface *plugin, int param_no) = 0;
     /// Bind the plugin window to the plugin
     virtual void set_window(plugin_ctl_iface *plugin, plugin_gui_window *window) = 0;
     /// Refresh preset lists on all windows (if, for example, a new preset has been created)
@@ -285,6 +301,7 @@ struct main_window_owner_iface
     virtual char *open_file(const char *name) = 0;
     virtual char *save_file(const char *name) = 0;
     virtual void reorder_plugins() = 0;
+    virtual void rename_plugin(plugin_ctl_iface *plugin, const char *name) = 0;
     /// Return JACK client name (or its counterpart) to put in window title bars
     virtual std::string get_client_name() const = 0;
     /// Called on 'destroy' event of the main window
@@ -298,31 +315,58 @@ struct main_window_owner_iface
     virtual ~main_window_owner_iface() {}
 };
 
-class plugin_gui_window: public calf_utils::config_listener_iface
+class plugin_gui_widget: public calf_utils::config_listener_iface
 {
 private:
-    void cleanup();
     window_update_controller refresh_controller;
-public:
+    int source_id;
+private:
+    static gboolean on_idle(void *data);
+protected:
+    void create_gui(plugin_ctl_iface *_jh);
+    static void on_window_destroyed(GtkWidget *window, gpointer data);
+    void cleanup();
+protected:
     plugin_gui *gui;
-    GtkWindow *toplevel;
-    GtkUIManager *ui_mgr;
-    GtkActionGroup *std_actions, *builtin_preset_actions, *user_preset_actions, *command_actions;
+    GtkWidget *container;
     gui_environment_iface *environment;
     main_window_iface *main;
-    int source_id;
-    calf_utils::config_notifier_iface *notifier;
+public:
+    std::string prefix;
+    GtkWidget *toplevel;
+public:
+    plugin_gui_widget(gui_environment_iface *_env, main_window_iface *_main);
+    GtkWidget *create(plugin_ctl_iface *_plugin);
+    gui_environment_iface *get_environment() { return environment; }
+    main_window_iface *get_main_window() { return main; }
+    plugin_gui *get_gui() { return gui; }
+    void refresh();
+    virtual void on_config_change() { }
+    ~plugin_gui_widget();
+};
 
+class plugin_gui_window: public plugin_gui_widget
+{
+public:
+    GtkUIManager *ui_mgr;
+    GtkActionGroup *std_actions, *builtin_preset_actions, *user_preset_actions, *command_actions;
+    calf_utils::config_notifier_iface *notifier;
+    GtkWidget *leftBG, *rightBG;
     plugin_gui_window(gui_environment_iface *_env, main_window_iface *_main);
     std::string make_gui_preset_list(GtkActionGroup *grp, bool builtin, char &ch);
     std::string make_gui_command_list(GtkActionGroup *grp, const plugin_metadata_iface *metadata);
     void fill_gui_presets(bool builtin, char &ch);
     void create(plugin_ctl_iface *_plugin, const char *title, const char *effect);
+    GtkWidget *decorate(GtkWidget *widget);
+    void show_rack_ears(bool show);
     void close();
     virtual void on_config_change();
-    static gboolean on_idle(void *data);
-    static void on_window_destroyed(GtkWidget *window, gpointer data);
     ~plugin_gui_window();
+
+    static void about_action(GtkAction *action, plugin_gui_window *gui_win);
+    static void help_action(GtkAction *action, plugin_gui_window *gui_win);
+    static void store_preset_action(GtkAction *action, plugin_gui_window *gui_win);
+
 };
 
 
@@ -379,6 +423,8 @@ public:
         cairo_show_text(context, label);
     }
 };
+
+
 
 };
 

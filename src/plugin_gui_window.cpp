@@ -29,15 +29,85 @@
 using namespace calf_plugins;
 using namespace std;
 
+/***************************** GUI widget ********************************************/
+
+plugin_gui_widget::plugin_gui_widget(gui_environment_iface *_env, main_window_iface *_main)
+{
+    gui = NULL;
+    toplevel = NULL;
+    environment = _env;
+    main = _main;
+    assert(environment);
+    prefix = "strips";
+}
+
+void plugin_gui_widget::on_window_destroyed(GtkWidget *window, gpointer data)
+{
+    plugin_gui_widget *self = (plugin_gui_widget *)data;
+    self->gui->destroy_child_widgets(self->toplevel);
+    delete self;
+}
+
+gboolean plugin_gui_widget::on_idle(void *data)
+{
+    plugin_gui_widget *self = (plugin_gui_widget *)data;
+    //if (!self->refresh_controller.check_redraw(GTK_WIDGET(self->toplevel)))
+        //return TRUE;
+    self->gui->on_idle();
+    return TRUE;
+}
+
+void plugin_gui_widget::create_gui(plugin_ctl_iface *_jh)
+{
+    gui = new plugin_gui(this);
+    const char *xml = _jh->get_metadata_iface()->get_gui_xml(prefix.c_str());
+    if (!xml) {
+        xml = "<hbox />";
+    }
+    container = gui->create_from_xml(_jh, xml);
+    source_id = g_timeout_add_full(G_PRIORITY_DEFAULT, 1000/30, on_idle, this, NULL); // 30 fps should be enough for everybody
+    gui->plugin->send_configures(gui);
+}
+
+GtkWidget *plugin_gui_widget::create(plugin_ctl_iface *_jh)
+{
+    create_gui(_jh);
+    gtk_widget_set_name(container, "Calf-Plugin-Strip");
+    gtk_widget_show_all(container);
+    toplevel = container;
+    g_signal_connect (GTK_WIDGET(toplevel), "destroy", G_CALLBACK (on_window_destroyed), (plugin_gui_widget *)this);
+    return container;
+}
+
+void plugin_gui_widget::refresh()
+{
+    if (gui)
+        gui->refresh();
+}
+
+void plugin_gui_widget::cleanup()
+{
+    if (source_id)
+        g_source_remove(source_id);
+    source_id = 0;
+}
+
+plugin_gui_widget::~plugin_gui_widget()
+{
+    cleanup();
+    delete gui;
+    gui = NULL;
+}
+
 /******************************* Actions **************************************************/
  
-namespace {
-    
-void store_preset_action(GtkAction *action, plugin_gui_window *gui_win)
+void plugin_gui_window::store_preset_action(GtkAction *action, plugin_gui_window *gui_win)
 {
     if (gui_win->gui->preset_access)
         gui_win->gui->preset_access->store_preset();
 }
+
+namespace {
 
 struct activate_preset_params
 {
@@ -60,13 +130,15 @@ void activate_preset(GtkAction *action, activate_preset_params *params)
     params->preset_access->activate_preset(params->preset, params->builtin);
 }
 
-void help_action(GtkAction *action, plugin_gui_window *gui_win)
+}
+
+void plugin_gui_window::help_action(GtkAction *action, plugin_gui_window *gui_win)
 {
     string uri = "file://" PKGDOCDIR "/" + string(gui_win->gui->plugin->get_metadata_iface()->get_label()) + ".html";
     GError *error = NULL;
-    if (!gtk_show_uri(gtk_window_get_screen(gui_win->toplevel), uri.c_str(), time(NULL), &error))
+    if (!gtk_show_uri(gtk_window_get_screen(GTK_WINDOW(gui_win->toplevel)), uri.c_str(), time(NULL), &error))
     {
-        GtkMessageDialog *dlg = GTK_MESSAGE_DIALOG(gtk_message_dialog_new(gui_win->toplevel, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_OTHER, GTK_BUTTONS_OK, "%s", error->message));
+        GtkMessageDialog *dlg = GTK_MESSAGE_DIALOG(gtk_message_dialog_new(GTK_WINDOW(gui_win->toplevel), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_OTHER, GTK_BUTTONS_OK, "%s", error->message));
         if (!dlg)
             return;
         
@@ -77,7 +149,7 @@ void help_action(GtkAction *action, plugin_gui_window *gui_win)
     }
 }
 
-void about_action(GtkAction *action, plugin_gui_window *gui_win)
+void plugin_gui_window::about_action(GtkAction *action, plugin_gui_window *gui_win)
 {
     GtkAboutDialog *dlg = GTK_ABOUT_DIALOG(gtk_about_dialog_new());
     if (!dlg)
@@ -138,7 +210,7 @@ void tips_tricks_action(GtkAction *action, plugin_gui_window *gui_win)
     "If you consider those a waste of screen space, you can turn them off in Preferences dialog in Calf JACK host. The setting affects all versions of the GUI (LV2 GTK+, LV2 External, JACK host).\n"
     "\n"
     ;
-    GtkMessageDialog *dlg = GTK_MESSAGE_DIALOG(gtk_message_dialog_new(gui_win->toplevel, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_OTHER, GTK_BUTTONS_OK, "%s", tips_and_tricks));
+    GtkMessageDialog *dlg = GTK_MESSAGE_DIALOG(gtk_message_dialog_new(GTK_WINDOW(gui_win->toplevel), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_OTHER, GTK_BUTTONS_OK, "%s", tips_and_tricks));
     if (!dlg)
         return;
     
@@ -147,8 +219,6 @@ void tips_tricks_action(GtkAction *action, plugin_gui_window *gui_win)
     gtk_dialog_run(GTK_DIALOG(dlg));
     gtk_widget_destroy(GTK_WIDGET(dlg));
 }
-
-};
 
 void calf_plugins::activate_command(GtkAction *action, activate_command_params *params)
 {
@@ -164,9 +234,9 @@ static const GtkActionEntry actions[] = {
     { "UserPresetMenuAction", NULL, "_User", NULL, "User (your) presets", NULL },
     { "CommandMenuAction", NULL, "_Commands", NULL, "Plugin-related commands", NULL },
     { "HelpMenuAction", NULL, "_Help", NULL, "Help-related commands", NULL },
-    { "store-preset", "gtk-save-as", "Store preset", NULL, "Store a current setting as preset", (GCallback)store_preset_action },
-    { "about", "gtk-about", "_About...", NULL, "About this plugin", (GCallback)about_action },
-    { "HelpMenuItemAction", "gtk-help", "_Help", NULL, "Show manual page for this plugin", (GCallback)help_action },
+    { "store-preset", "gtk-save-as", "Store preset", NULL, "Store a current setting as preset", (GCallback)plugin_gui_window::store_preset_action },
+    { "about", "gtk-about", "_About...", NULL, "About this plugin", (GCallback)plugin_gui_window::about_action },
+    { "HelpMenuItemAction", "gtk-help", "_Help", NULL, "Show manual page for this plugin", (GCallback)plugin_gui_window::help_action },
     { "tips-tricks", NULL, "_Tips and tricks...", NULL, "Show a list of tips and tricks", (GCallback)tips_tricks_action },
 };
 
@@ -225,25 +295,14 @@ static const char *command_post_xml =
 ;
 
 plugin_gui_window::plugin_gui_window(gui_environment_iface *_env, main_window_iface *_main)
+: plugin_gui_widget(_env, _main)
 {
-    toplevel = NULL;
     ui_mgr = NULL;
     std_actions = NULL;
     builtin_preset_actions = NULL;
     user_preset_actions = NULL;
     command_actions = NULL;
-    environment = _env;
     notifier = NULL;
-    main = _main;
-    assert(environment);
-
-}
-
-void plugin_gui_window::on_window_destroyed(GtkWidget *window, gpointer data)
-{
-    plugin_gui_window *self = (plugin_gui_window *)data;
-    self->gui->destroy_child_widgets(GTK_WIDGET(self->toplevel));
-    delete self;
 }
 
 string plugin_gui_window::make_gui_preset_list(GtkActionGroup *grp, bool builtin, char &ch)
@@ -267,7 +326,7 @@ string plugin_gui_window::make_gui_preset_list(GtkActionGroup *grp, bool builtin
         string sv = ss.str();
         string prefix = ch == ' ' ? string() : string("_")+ch+" ";
         string name = prefix + pvec[i].name;
-        GtkActionEntry ae = { sv.c_str(), NULL, name.c_str(), NULL, NULL, (GCallback)activate_preset };
+        GtkActionEntry ae = { sv.c_str(), NULL, name.c_str(), NULL, NULL, (GCallback)::activate_preset };
         gtk_action_group_add_actions_full(preset_actions, &ae, 1, (gpointer)new activate_preset_params(pai, i, builtin), activate_preset_params::action_destroy_notify);
     }
     preset_xml += preset_post_xml;
@@ -311,32 +370,32 @@ void plugin_gui_window::fill_gui_presets(bool builtin, char &ch)
     gtk_ui_manager_add_ui_from_string(ui_mgr, preset_xml.c_str(), -1, &error);
 }
 
-gboolean plugin_gui_window::on_idle(void *data)
-{
-    plugin_gui_window *self = (plugin_gui_window *)data;
-    if (!self->refresh_controller.check_redraw(GTK_WIDGET(self->toplevel)))
-        return TRUE;
-    self->gui->on_idle();
-    return TRUE;
-}
-
 void plugin_gui_window::create(plugin_ctl_iface *_jh, const char *title, const char *effect)
 {
-    toplevel = GTK_WINDOW(gtk_window_new (GTK_WINDOW_TOPLEVEL));
-    gtk_window_set_icon_name(toplevel, "calf_plugin");
-    gtk_window_set_type_hint(toplevel, GDK_WINDOW_TYPE_HINT_NORMAL);
-    gtk_window_set_role(toplevel, "calf_plugin");
+    prefix = "gui";
+    GtkWidget *win = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_icon_name(GTK_WINDOW(win), "calf_plugin");
+    gtk_window_set_type_hint(GTK_WINDOW(win), GDK_WINDOW_TYPE_HINT_NORMAL);
+    gtk_window_set_role(GTK_WINDOW(win), "calf_plugin");
     
     GtkVBox *vbox = GTK_VBOX(gtk_vbox_new(false, 0));
-    gtk_widget_set_name(GTK_WIDGET(vbox), "Calf-Plugin");
     
     GtkRequisition req, req2;
-    gtk_window_set_title(GTK_WINDOW (toplevel), title);
-    gtk_container_add(GTK_CONTAINER(toplevel), GTK_WIDGET(vbox));
+    gtk_window_set_title(GTK_WINDOW (win), title);
+    gtk_container_add(GTK_CONTAINER(win), GTK_WIDGET(vbox));
+    
+    create_gui(_jh);
 
-    gui = new plugin_gui(this);
     gui->effect_name = effect;
-
+    gtk_widget_set_name(GTK_WIDGET(vbox), "Calf-Plugin");
+    GtkWidget *decoTable = decorate(container);
+    
+    GtkWidget *eventbox  = gtk_event_box_new();
+    gtk_widget_set_name( GTK_WIDGET(eventbox), "Calf-Plugin" );
+    gtk_container_add( GTK_CONTAINER(eventbox), decoTable );
+    
+    gtk_widget_show(eventbox);
+    
     ui_mgr = gtk_ui_manager_new();
     std_actions = gtk_action_group_new("default");
     gtk_action_group_add_actions(std_actions, actions, sizeof(actions)/sizeof(actions[0]), this);
@@ -359,72 +418,104 @@ void plugin_gui_window::create(plugin_ctl_iface *_jh, const char *title, const c
     // determine size without content
     gtk_widget_show_all(GTK_WIDGET(vbox));
     gtk_widget_size_request(GTK_WIDGET(vbox), &req2);
-    // printf("size request %dx%d\n", req2.width, req2.height);
     
-    GtkWidget *container;
-    const char *xml = _jh->get_metadata_iface()->get_gui_xml();
-    assert(xml);
-    container = gui->create_from_xml(_jh, xml);
-    gtk_widget_show_all(GTK_WIDGET(container));
     GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
     gtk_widget_show(GTK_WIDGET(sw));
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(sw), GTK_SHADOW_NONE);
-    gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(sw), GTK_WIDGET(container));
+    gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(sw), GTK_WIDGET(eventbox));
     gtk_widget_set_name(GTK_WIDGET(sw), "Calf-Container");
     gtk_box_pack_start(GTK_BOX(vbox), sw, true, true, 0);
     
-    gui->show_rack_ears(environment->get_config()->rack_ears);
+    show_rack_ears(environment->get_config()->rack_ears);
     
     gtk_widget_size_request(GTK_WIDGET(container), &req);
     int wx = max(req.width + 10, req2.width);
     int wy = req.height + req2.height + 10;
-    // printf("size request %dx%d\n", req.width, req.height);
-    // printf("resize to %dx%d\n", max(req.width + 10, req2.width), req.height + req2.height + 10);
-    gtk_window_set_default_size(GTK_WINDOW(toplevel), wx, wy);
-    gtk_window_resize(GTK_WINDOW(toplevel), wx, wy);
-    //gtk_widget_set_size_request(GTK_WIDGET(toplevel), max(req.width + 10, req2.width), req.height + req2.height + 10);
-    // printf("size set %dx%d\n", wx, wy);
-    // gtk_scrolled_window_set_vadjustment(GTK_SCROLLED_WINDOW(sw), GTK_ADJUSTMENT(gtk_adjustment_new(0, 0, req.height, 20, 100, 100)));
-    g_signal_connect (GTK_OBJECT (toplevel), "destroy", G_CALLBACK (on_window_destroyed), (plugin_gui_window *)this);
+    gtk_window_set_default_size(GTK_WINDOW(win), wx, wy);
+    gtk_window_resize(GTK_WINDOW(win), wx, wy);
+    g_signal_connect (GTK_WIDGET(win), "destroy", G_CALLBACK (on_window_destroyed), (plugin_gui_widget *)this);
     if (main)
         main->set_window(gui->plugin, this);
 
-    source_id = g_timeout_add_full(G_PRIORITY_DEFAULT, 1000/30, on_idle, this, NULL); // 30 fps should be enough for everybody
     gtk_ui_manager_ensure_update(ui_mgr);
-    gui->plugin->send_configures(gui);
-    
+    toplevel = win;
     notifier = environment->get_config_db()->add_listener(this);
 }
 
 void plugin_gui_window::on_config_change()
 {
     environment->get_config()->load(environment->get_config_db());
-    gui->show_rack_ears(environment->get_config()->rack_ears);
+    show_rack_ears(environment->get_config()->rack_ears);
 }
 
-void plugin_gui_window::cleanup()
+void plugin_gui_window::close()
+{
+    gtk_widget_destroy(toplevel);
+}
+
+GtkWidget *plugin_gui_window::decorate(GtkWidget *widget) {
+    GtkWidget *decoTable = gtk_table_new(3, 1, FALSE);
+    
+    // images for left side
+    GtkWidget *nwImg     = gtk_image_new_from_pixbuf(environment->get_image_factory()->get("side_nw"));
+    GtkWidget *swImg     = gtk_image_new_from_pixbuf(environment->get_image_factory()->get("side_sw"));
+    
+    // images for right side
+    GtkWidget *neImg     = gtk_image_new_from_pixbuf(environment->get_image_factory()->get("side_ne"));
+    GtkWidget *seImg     = gtk_image_new_from_pixbuf(environment->get_image_factory()->get("side_se"));
+    
+    // pack left box
+    leftBG = gtk_event_box_new();
+    GtkWidget *leftBox = gtk_vbox_new(FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(leftBG), leftBox);
+    gtk_box_pack_start(GTK_BOX(leftBox), GTK_WIDGET(nwImg), FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(leftBox), GTK_WIDGET(swImg), FALSE, FALSE, 0);
+    gtk_widget_set_name(leftBG, "CalfPluginLeft");
+    
+    // pack right box
+    rightBG  = gtk_event_box_new();
+    GtkWidget *rightBox = gtk_vbox_new(FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(rightBG), rightBox);
+    gtk_box_pack_start(GTK_BOX(rightBox), GTK_WIDGET(neImg), FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(rightBox), GTK_WIDGET(seImg), FALSE, FALSE, 0);
+    gtk_widget_set_name(rightBG, "CalfPluginRight");
+    
+    //gtk_table_attach(GTK_TABLE(decoTable), GTK_WIDGET(bgImg),     0, 2, 0, 2, (GtkAttachOptions)(GTK_EXPAND | GTK_SHRINK | GTK_FILL), (GtkAttachOptions)(GTK_EXPAND | GTK_SHRINK | GTK_FILL), 0, 0);
+    gtk_table_attach(GTK_TABLE(decoTable), GTK_WIDGET(leftBG),   0, 1, 0, 1, (GtkAttachOptions)(0), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 0, 0);
+    gtk_table_attach(GTK_TABLE(decoTable), GTK_WIDGET(rightBG),  2, 3, 0, 1, (GtkAttachOptions)(0), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 0, 0);
+        
+    gtk_table_attach(GTK_TABLE(decoTable), widget, 1, 2, 0, 1, (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), (GtkAttachOptions)(GTK_EXPAND | GTK_FILL), 15, 5);
+    
+    gtk_widget_show_all(decoTable);
+    return GTK_WIDGET(decoTable);
+}
+
+
+void plugin_gui_window::show_rack_ears(bool show)
+{
+    // if hidden, add a no-show-all attribute so that LV2 host doesn't accidentally override
+    // the setting by doing a show_all on the outermost container
+    gtk_widget_set_no_show_all(leftBG, !show);
+    gtk_widget_set_no_show_all(rightBG, !show);
+    if (show)
+    {
+        gtk_widget_show(leftBG);
+        gtk_widget_show(rightBG);
+    }
+    else
+    {
+        gtk_widget_hide(leftBG);
+        gtk_widget_hide(rightBG);
+    }
+}
+plugin_gui_window::~plugin_gui_window()
 {
     if (notifier)
     {
         delete notifier;
         notifier = NULL;
     }
-    if (source_id)
-        g_source_remove(source_id);
-    source_id = 0;
-}
-
-void plugin_gui_window::close()
-{
-    cleanup();
-    gtk_widget_destroy(GTK_WIDGET(toplevel));
-}
-
-plugin_gui_window::~plugin_gui_window()
-{
     if (main)
         main->set_window(gui->plugin, NULL);
-    cleanup();
-    delete gui;
 }

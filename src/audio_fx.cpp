@@ -82,7 +82,8 @@ void simple_phaser::control_step()
     float freq = base_frq * pow(2.0, vf * mod_depth / 1200.0);
     freq = dsp::clip<float>(freq, 10.0, 0.49 * sample_rate);
     stage1.set_ap_w(freq * (M_PI / 2.0) * odsr);
-    phase += dphase * 32;
+    if (lfo_active)
+        phase += dphase * 32;
     for (int i = 0; i < stages; i++)
     {
         dsp::sanitize(x1[i]);
@@ -91,13 +92,13 @@ void simple_phaser::control_step()
     dsp::sanitize(state);
 }
 
-void simple_phaser::process(float *buf_out, float *buf_in, int nsamples)
+void simple_phaser::process(float *buf_out, float *buf_in, int nsamples, bool active, float level_in, float level_out)
 {
     for (int i=0; i<nsamples; i++) {
         cnt++;
         if (cnt == 32)
             control_step();
-        float in = *buf_in++;
+        float in = *buf_in++ * level_in;
         float fd = in + state * fb;
         for (int j = 0; j < stages; j++)
             fd = stage1.process_ap(fd, x1[j], y1[j]);
@@ -105,7 +106,7 @@ void simple_phaser::process(float *buf_out, float *buf_in, int nsamples)
 
         float sdry = in * gs_dry.get();
         float swet = fd * gs_wet.get();
-        *buf_out++ = sdry + swet;
+        *buf_out++ = (sdry + (active ? swet : 0)) * level_out;
     }
 }
 
@@ -166,7 +167,7 @@ void biquad_filter_module::sanitize()
     }
 }
 
-int biquad_filter_module::process_channel(uint16_t channel_no, const float *in, float *out, uint32_t numsamples, int inmask) {
+int biquad_filter_module::process_channel(uint16_t channel_no, const float *in, float *out, uint32_t numsamples, int inmask, float lvl_in, float lvl_out) {
     dsp::biquad_d1 *filter;
     switch (channel_no) {
     case 0:
@@ -185,16 +186,22 @@ int biquad_filter_module::process_channel(uint16_t channel_no, const float *in, 
     if (inmask) {
         switch(order) {
             case 1:
-                for (uint32_t i = 0; i < numsamples; i++)
-                    out[i] = filter[0].process(in[i]);
+                for (uint32_t i = 0; i < numsamples; i++) {
+                    out[i] = filter[0].process(in[i] * lvl_in);
+                    out[i] *= lvl_out;
+                }
                 break;
             case 2:
-                for (uint32_t i = 0; i < numsamples; i++)
-                    out[i] = filter[1].process(filter[0].process(in[i]));
+                for (uint32_t i = 0; i < numsamples; i++) {
+                    out[i] = filter[1].process(filter[0].process(in[i] * lvl_in));
+                    out[i] *= lvl_out;
+                }
                 break;
             case 3:
-                for (uint32_t i = 0; i < numsamples; i++)
-                    out[i] = filter[2].process(filter[1].process(filter[0].process(in[i])));
+                for (uint32_t i = 0; i < numsamples; i++) {
+                    out[i] = filter[2].process(filter[1].process(filter[0].process(in[i] * lvl_in)));
+                    out[i] *= lvl_out;
+                }
                 break;
         }
     } else {
@@ -202,24 +209,34 @@ int biquad_filter_module::process_channel(uint16_t channel_no, const float *in, 
             return 0;
         switch(order) {
             case 1:
-                for (uint32_t i = 0; i < numsamples; i++)
+                for (uint32_t i = 0; i < numsamples; i++) {
                     out[i] = filter[0].process_zeroin();
+                    out[i] *= lvl_out;
+                }
                 break;
             case 2:
                 if (filter[0].empty())
-                    for (uint32_t i = 0; i < numsamples; i++)
+                    for (uint32_t i = 0; i < numsamples; i++) {
                         out[i] = filter[1].process_zeroin();
+                        out[i] *= lvl_out;
+                    }
                 else
-                    for (uint32_t i = 0; i < numsamples; i++)
+                    for (uint32_t i = 0; i < numsamples; i++) {
                         out[i] = filter[1].process(filter[0].process_zeroin());
+                        out[i] *= lvl_out;
+                    }
                 break;
             case 3:
                 if (filter[1].empty())
-                    for (uint32_t i = 0; i < numsamples; i++)
+                    for (uint32_t i = 0; i < numsamples; i++) {
                         out[i] = filter[2].process_zeroin();
+                        out[i] *= lvl_out;
+                    }
                 else
-                    for (uint32_t i = 0; i < numsamples; i++)
+                    for (uint32_t i = 0; i < numsamples; i++) {
                         out[i] = filter[2].process(filter[1].process(filter[0].process_zeroin()));
+                        out[i] *= lvl_out;
+                    }
                 break;
         }
     }
@@ -434,6 +451,7 @@ simple_lfo::simple_lfo()
 {
     is_active       = false;
     phase = 0.f;
+    pwidth = 1.f;
 }
 
 void simple_lfo::activate()
@@ -449,14 +467,14 @@ void simple_lfo::deactivate()
 
 float simple_lfo::get_value()
 {
-    return get_value_from_phase(phase, offset) * amount;
+    return get_value_from_phase(phase);
 }
 
-float simple_lfo::get_value_from_phase(float ph, float off) const
+float simple_lfo::get_value_from_phase(float ph) const
 {
     float val = 0.f;
-    float phs = ph + off;
-    if (phs >= 1.0)
+    float phs = std::min(100.f, ph / std::min(1.99f, std::max(0.01f, pwidth)) + offset);
+    if (phs > 1)
         phs = fmod(phs, 1.f);
     switch (mode) {
         default:
@@ -488,15 +506,13 @@ float simple_lfo::get_value_from_phase(float ph, float off) const
             val = 1 - phs * 2.f;
             break;
     }
-    return val;
+    return val * amount;
 }
 
 void simple_lfo::advance(uint32_t count)
 {
     //this function walks from 0.f to 1.f and starts all over again
-    phase += count * freq * (1.0 / srate);
-    if (phase >= 1.0)
-        phase = fmod(phase, 1.f);
+    set_phase(phase + count * freq * (1.0 / srate));
 }
 
 void simple_lfo::set_phase(float ph)
@@ -507,16 +523,17 @@ void simple_lfo::set_phase(float ph)
         phase = fmod(phase, 1.f);
 }
 
-void simple_lfo::set_params(float f, int m, float o, uint32_t sr, float a)
+void simple_lfo::set_params(float f, int m, float o, uint32_t sr, float a, float p)
 {
     // freq: a value in Hz
     // mode: sine=0, triangle=1, square=2, saw_up=3, saw_down=4
     // offset: value between 0.f and 1.f to offset the lfo in time
-    freq = f;
-    mode = m;
+    freq   = f;
+    mode   = m;
     offset = o;
-    srate = sr;
+    srate  = sr;
     amount = a;
+    pwidth = p;
 }
 void simple_lfo::set_freq(float f)
 {
@@ -534,13 +551,17 @@ void simple_lfo::set_amount(float a)
 {
     amount = a;
 }
+void simple_lfo::set_pwidth(float p)
+{
+    pwidth = p;
+}
 bool simple_lfo::get_graph(float *data, int points, cairo_iface *context, int *mode) const
 {
     if (!is_active)
         return false;
     for (int i = 0; i < points; i++) {
         float ph = (float)i / (float)points;
-        data[i] = get_value_from_phase(ph, offset) * amount;
+        data[i] = get_value_from_phase(ph);
     }
     return true;
 }
@@ -553,7 +574,7 @@ bool simple_lfo::get_dot(float &x, float &y, int &size, cairo_iface *context) co
     if (phs >= 1.0)
         phs = fmod(phs, 1.f);
     x = phase;
-    y = get_value_from_phase(phase, offset) * amount;
+    y = get_value_from_phase(phase);
     return true;
 }
 
@@ -587,6 +608,9 @@ lookahead_limiter::lookahead_limiter() {
     asc_pos = -1;
     asc_changed = false;
     asc_coeff = 1.f;
+    buffer = NULL;
+    nextpos = NULL;
+    nextdelta = NULL;
 }
 lookahead_limiter::~lookahead_limiter()
 {
@@ -1326,7 +1350,6 @@ resampleN::resampleN()
 }
 resampleN::~resampleN()
 {
-    free(tmp);
 }
 void resampleN::set_params(uint32_t sr, int fctr = 2, int fltrs = 2)
 {

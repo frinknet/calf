@@ -51,7 +51,7 @@ public:
 class modulation_effect: public audio_effect
 {
 protected:
-    int sample_rate;
+    int sample_rate, lfo_active;
     float rate, wet, dry, odsr;
     gain_smoothing gs_wet, gs_dry;
 public:
@@ -90,7 +90,14 @@ public:
         this->sample_rate = sample_rate;
         this->odsr = 1.0 / sample_rate;
         phase = 0;
+        lfo_active = 1;
         set_rate(get_rate());
+    }
+    int get_lfo_active() const {
+        return lfo_active;
+    }
+    void set_lfo_active(int i) {
+        this->lfo_active = i;
     }
 };
 
@@ -133,14 +140,14 @@ public:
     void set_fb(float fb) {
         this->fb = fb;
     }
-
+    
     virtual void setup(int sample_rate) {
         modulation_effect::setup(sample_rate);
         reset();
     }
     void reset();
     void control_step();
-    void process(float *buf_out, float *buf_in, int nsamples);
+    void process(float *buf_out, float *buf_in, int nsamples, bool active, float level_in = 1., float level_out = 1.);
     float freq_gain(float freq, float sr) const;
 };
 
@@ -201,14 +208,15 @@ public:
         set_mod_depth(get_mod_depth());
     }
     template<class OutIter, class InIter>
-    void process(OutIter buf_out, InIter buf_in, int nsamples) {
+    void process(OutIter buf_out, InIter buf_in, int nsamples, bool active, float level_in = 1., float level_out = 1.) {
         int mds = min_delay_samples + mod_depth_samples * 1024 + 2*65536;
         int mdepth = mod_depth_samples;
         for (int i=0; i<nsamples; i++) {
-            phase += dphase;
+            if (lfo_active)
+                phase += dphase;
             unsigned int ipart = phase.ipart();
 
-            float in = *buf_in++;
+            float in = *buf_in++ * level_in;
             int lfo = phase.lerp_by_fract_int<int, 14, int>(sine.data[ipart], sine.data[ipart+1]);
             int v = mds + (mdepth * lfo >> 6);
             // if (!(i & 7)) printf("%d\n", v);
@@ -218,7 +226,7 @@ public:
             delay.get_interp(fd, ifv, (v & 0xFFFF)*(1.0/65536.0));
             T sdry = in * gs_dry.get();
             T swet = fd * gs_wet.get();
-            *buf_out++ = sdry + swet;
+            *buf_out++ = (sdry + (active ? swet : 0)) * level_out;
         }
     }
 };
@@ -233,7 +241,7 @@ protected:
     simple_delay<MaxDelay,T> delay;
     float fb;
     int last_delay_pos, last_actual_delay_pos;
-    int ramp_pos, ramp_delay_pos;
+    int ramp_pos, ramp_delay_pos, lfo;
 public:
     simple_flanger()
     : fb(0) {}
@@ -257,7 +265,7 @@ public:
         this->fb = fb;
     }
     template<class OutIter, class InIter>
-    void process(OutIter buf_out, InIter buf_in, int nsamples) {
+    void process(OutIter buf_out, InIter buf_in, int nsamples, bool active, float level_in = 1., float level_out = 1.) {
         if (!nsamples)
             return;
         int mds = this->min_delay_samples + this->mod_depth_samples * 1024 + 2 * 65536;
@@ -278,7 +286,7 @@ public:
 
             int64_t dp = 0;
             for (int i=0; i<nsamples; i++) {
-                float in = *buf_in++;
+                float in = *buf_in++ * level_in;
                 T fd; // signal from delay's output
                 dp = (((int64_t)ramp_delay_pos) * (1024 - ramp_pos) + ((int64_t)delay_pos) * ramp_pos) >> 10;
                 ramp_pos++;
@@ -287,10 +295,11 @@ public:
                 sanitize(fd);
                 T sdry = in * this->dry;
                 T swet = fd * this->wet;
-                *buf_out++ = sdry + swet;
+                *buf_out++ = (sdry + (active ? swet : 0)) * level_out;
                 this->delay.put(in+fb*fd);
-
-                this->phase += this->dphase;
+                
+                if (this->lfo_active)
+                    this->phase += this->dphase;
                 ipart = this->phase.ipart();
                 lfo = phase.lerp_by_fract_int<int, 14, int>(this->sine.data[ipart], this->sine.data[ipart+1]);
                 delay_pos = mds + (mdepth * lfo >> 6);
@@ -299,16 +308,17 @@ public:
         }
         else {
             for (int i=0; i<nsamples; i++) {
-                float in = *buf_in++;
+                float in = *buf_in++ * level_in;
                 T fd; // signal from delay's output
                 this->delay.get_interp(fd, delay_pos >> 16, (delay_pos & 0xFFFF)*(1.0/65536.0));
                 sanitize(fd);
                 T sdry = in * this->gs_dry.get();
                 T swet = fd * this->gs_wet.get();
-                *buf_out++ = sdry + swet;
+                *buf_out++ = (sdry + (active ? swet : 0)) * level_out;
                 this->delay.put(in+fb*fd);
-
-                this->phase += this->dphase;
+                
+                if (this->lfo_active)
+                    this->phase += this->dphase;
                 ipart = this->phase.ipart();
                 lfo = phase.lerp_by_fract_int<int, 14, int>(this->sine.data[ipart], this->sine.data[ipart+1]);
                 delay_pos = mds + (mdepth * lfo >> 6);
@@ -432,7 +442,7 @@ public:
     virtual void  calculate_filter(float freq, float q, int mode, float gain = 1.0) = 0;
     virtual void  filter_activate() = 0;
     virtual void  sanitize() = 0;
-    virtual int   process_channel(uint16_t channel_no, const float *in, float *out, uint32_t numsamples, int inmask) = 0;
+    virtual int   process_channel(uint16_t channel_no, const float *in, float *out, uint32_t numsamples, int inmask, float lvl_in = 1., float lvl_out = 1.) = 0;
     virtual float freq_gain(int subindex, float freq, float srate) const = 0;
 
     virtual ~filter_module_iface() {}
@@ -465,7 +475,7 @@ public:
     /// Remove denormals
     void sanitize();
     /// Process a single channel (float buffer) of data
-    int process_channel(uint16_t channel_no, const float *in, float *out, uint32_t numsamples, int inmask);
+    int process_channel(uint16_t channel_no, const float *in, float *out, uint32_t numsamples, int inmask, float lvl_in = 1., float lvl_out = 1.);
     /// Determine gain (|H(z)|) for a given frequency
     float freq_gain(int subindex, float freq, float srate) const;
 };
@@ -518,23 +528,24 @@ public:
 /// get_value() returns a value between -1 and 1
 class simple_lfo {
 private:
-    float phase, freq, offset, amount;
+    float phase, freq, offset, amount, pwidth;
     int mode;
     uint32_t srate;
     bool is_active;
 public:
     simple_lfo();
-    void set_params(float f, int m, float o, uint32_t sr, float amount = 1.f);
+    void set_params(float f, int m, float o, uint32_t sr, float amount = 1.f, float pwidth = 1.f);
     void set_freq(float f);
     void set_mode(int m);
     void set_amount(float a);
     void set_offset(float o);
+    void set_pwidth(float p);
     float get_value();
     void advance(uint32_t count);
     void set_phase(float ph);
     void activate();
     void deactivate();
-    float get_value_from_phase(float ph, float off) const;
+    float get_value_from_phase(float ph) const;
     bool get_graph(float *data, int points, calf_plugins::cairo_iface *context, int *mode) const;
     bool get_dot(float &x, float &y, int &size, calf_plugins::cairo_iface *context) const;
 };

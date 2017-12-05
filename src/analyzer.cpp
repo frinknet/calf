@@ -18,7 +18,6 @@
  * Boston, MA  02110-1301  USA
  */
  
-#include <cairo/cairo.h>
 #include <limits.h>
 #include <memory.h>
 #include <math.h>
@@ -31,7 +30,7 @@
 using namespace dsp;
 using namespace calf_plugins;
 
-#define sinc(x) (!x) ? 1 : sin(M_PI * x)/(M_PI * x);
+#define sinc(x) (x == 0) ? 1 : sin(M_PI * x)/(M_PI * x);
 #define RGBAtoINT(r, g, b, a) ((uint32_t)(r * 255) << 24) + ((uint32_t)(g * 255) << 16) + ((uint32_t)(b * 255) << 8) + (uint32_t)(a * 255)
 
 analyzer::analyzer() {
@@ -90,6 +89,7 @@ analyzer::~analyzer()
     free(fft_outL);
     free(fft_inR);
     free(fft_inL);
+    free(fft_buffer);
     free(spline_buffer);
 }
 void analyzer::set_sample_rate(uint32_t sr) {
@@ -470,13 +470,13 @@ void analyzer::draw(int subindex, float *data, int points, bool fftdone) const
                                 lastoutL = fft_outL[_iter];
                                 //pumping up actual signal an erase surrounding
                                 // sounds
-                                fft_outL[_iter] = 0.25f * std::max(n * 0.6f * \
-                                    fabs(fft_outL[_iter]) - var1L , 1e-20);
+                                fft_outL[_iter] = 0.25f * std::max((float)(n * 0.6f * \
+                                    fabs(fft_outL[_iter]) - var1L), 1e-20f);
                                 if(_mode == 3 or _mode == 4) {
                                     // do the same with R channel if needed
                                     lastoutR = fft_outR[_iter];
-                                    fft_outR[_iter] = 0.25f * std::max(n * \
-                                        0.6f * fabs(fft_outR[_iter]) - var1R , 1e-20);
+                                    fft_outR[_iter] = 0.25f * std::max((float)(n * \
+                                        0.6f * fabs(fft_outR[_iter]) - var1R), 1e-20f);
                                 }
                                 break;
                         }

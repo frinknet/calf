@@ -18,26 +18,7 @@
  * Boston, MA  02110-1301  USA
  */
  
-#include <config.h>
-#include <assert.h>
-#include <sys/time.h>
-#include <calf/ctl_curve.h>
-#include <calf/ctl_keyboard.h>
-#include <calf/ctl_knob.h>
-#include <calf/ctl_led.h>
-#include <calf/ctl_tube.h>
-#include <calf/ctl_vumeter.h>
-#include <calf/custom_ctl.h>
-#include <calf/giface.h>
-#include <calf/gui.h>
 #include <calf/gui_controls.h>
-#include <calf/utils.h>
-#include <gdk/gdk.h>
-#include <gdk/gdkkeysyms.h>
-#include <calf/ctl_linegraph.h>
-#include <iostream>
-#include <vector>
-#include <algorithm>
 
 using namespace calf_plugins;
 using namespace calf_utils;
@@ -275,7 +256,7 @@ void param_control::create_value_entry(GtkWidget *widget, int x, int y)
     gtk_window_set_decorated (GTK_WINDOW(entrywin), FALSE);
     gtk_window_set_skip_taskbar_hint (GTK_WINDOW(entrywin), TRUE);
     gtk_window_set_skip_pager_hint (GTK_WINDOW(entrywin), TRUE);
-    gtk_window_set_transient_for (GTK_WINDOW(entrywin), GTK_WINDOW (gui->window->toplevel));
+    gtk_window_set_transient_for (GTK_WINDOW(entrywin), GTK_WINDOW (gtk_widget_get_toplevel(gui->window->toplevel)));
     gtk_window_set_gravity(GTK_WINDOW(entrywin), GDK_GRAVITY_CENTER);
     gtk_widget_set_events (GTK_WIDGET(entrywin), GDK_FOCUS_CHANGE_MASK);
     g_signal_connect (G_OBJECT(entrywin), "focus-out-event", G_CALLBACK (value_entry_unfocus), this);
@@ -313,9 +294,14 @@ GtkWidget *combo_box_param_control::create(plugin_gui *_gui, int _param_no)
         for (int j = (int)props.min; j <= (int)props.max; j++)
             gtk_list_store_insert_with_values (lstore, NULL, j - (int)props.min, 0, props.choices[j - (int)props.min], 1, calf_utils::i2s(j).c_str(), -1);
     }
+    
+    // set pixbuf
+    calf_combobox_set_arrow(CALF_COMBOBOX(widget),
+        gui->window->get_environment()->get_image_factory()->get("combo_arrow"));
+    
     gtk_combo_box_set_model (GTK_COMBO_BOX(widget), GTK_TREE_MODEL(lstore));
     g_signal_connect (GTK_OBJECT (widget), "changed", G_CALLBACK (combo_value_changed), (gpointer)this);
-    gtk_widget_set_name(GTK_WIDGET(widget), "Calf-Combobox");
+    gtk_widget_set_name(widget, "Calf-Combobox");
     return widget;
 }
 
@@ -326,6 +312,7 @@ void combo_box_param_control::set()
     {
         const parameter_properties &props = get_props();
         gtk_combo_box_set_active (GTK_COMBO_BOX (widget), (int)gui->plugin->get_param_value(param_no) - (int)props.min);
+        gtk_widget_queue_draw(widget);
     }
 }
 
@@ -457,6 +444,13 @@ GtkWidget *hscale_param_control::create(plugin_gui *_gui, int _param_no)
         gtk_range_set_inverted(GTK_RANGE(widget), TRUE);
     }
     int size = get_int("size", 2);
+    
+    // set pixbuf
+    image_factory *images = gui->window->get_environment()->get_image_factory();
+    char iname[64];
+    sprintf(iname, "slider_%d_horiz", size);
+    calf_fader_set_pixbuf(CALF_FADER(widget), images->get(iname));
+    
     char *name = g_strdup_printf("Calf-HScale%i", size);
     gtk_widget_set_name(GTK_WIDGET(widget), name);
     gtk_widget_set_size_request (widget, size * 100, -1);
@@ -464,11 +458,12 @@ GtkWidget *hscale_param_control::create(plugin_gui *_gui, int _param_no)
 
     if (attribs.count("width"))
         gtk_widget_set_size_request (widget, get_int("width", 200), -1);
-    if (attribs.count("position"))
-    {
+    if (attribs.count("position")) {
         string v = attribs["position"];
         if (v == "top") gtk_scale_set_value_pos(GTK_SCALE(widget), GTK_POS_TOP);
         if (v == "bottom") gtk_scale_set_value_pos(GTK_SCALE(widget), GTK_POS_BOTTOM);
+        if (v == "left") gtk_scale_set_value_pos(GTK_SCALE(widget), GTK_POS_LEFT);
+        if (v == "right") gtk_scale_set_value_pos(GTK_SCALE(widget), GTK_POS_RIGHT);
     }
     return widget;
 }
@@ -521,6 +516,13 @@ GtkWidget *vscale_param_control::create(plugin_gui *_gui, int _param_no)
         gtk_range_set_inverted(GTK_RANGE(widget), TRUE);
     }
     int size = get_int("size", 2);
+    
+    // set pixbuf
+    image_factory *images = gui->window->get_environment()->get_image_factory();
+    char iname[64];
+    sprintf(iname, "slider_%d_vert", size);
+    calf_fader_set_pixbuf(CALF_FADER(widget), images->get(iname));
+    
     char *name = g_strdup_printf("Calf-VScale%i", size);
     gtk_widget_set_size_request (widget, -1, size * 100);
     gtk_widget_set_name(GTK_WIDGET(widget), name);
@@ -858,12 +860,20 @@ GtkWidget *knob_param_control::create(plugin_gui *_gui, int _param_no)
     param_no = _param_no;
     const parameter_properties &props = get_props();
     widget = calf_knob_new();
+    gtk_widget_set_name(GTK_WIDGET(widget), "Calf-Knob");
+    CalfKnob * knob = CALF_KNOB(widget);
+    
     float increment = props.get_increment();
     gtk_range_get_adjustment(GTK_RANGE(widget))->step_increment = increment;
-    CalfKnob * knob = CALF_KNOB(widget);
+    
     knob->default_value = props.to_01(props.def_value);
     knob->type = get_int("type");
-    knob->size = min(5, max(1, get_int("size", 2)));
+    calf_knob_set_size(knob, get_int("size", 2));
+    
+    // set pixbuf
+    char imgname[16];
+    sprintf(imgname, "knob_%d", get_int("size", 2));
+    calf_knob_set_pixbuf(knob, gui->window->get_environment()->get_image_factory()->get(imgname));
     
     //char ticks[128];
     std::ostringstream ticks_;
@@ -884,7 +894,6 @@ GtkWidget *knob_param_control::create(plugin_gui *_gui, int _param_no)
         t[i] = props.to_01(t[i]);
     knob->ticks = t;
     g_signal_connect(GTK_OBJECT(widget), "value-changed", G_CALLBACK(knob_value_changed), (gpointer)this);
-    gtk_widget_set_name(GTK_WIDGET(widget), "Calf-Knob");
     return widget;
 }
 
@@ -917,8 +926,18 @@ GtkWidget *toggle_param_control::create(plugin_gui *_gui, int _param_no)
     widget  = calf_toggle_new ();
     CalfToggle * toggle = CALF_TOGGLE(widget);
     calf_toggle_set_size(toggle, get_int("size", 2));
-    if (attribs.count("icon") != 0)
-        calf_toggle_set_icon(toggle, attribs["icon"].c_str());
+    
+    // set pixbuf
+    image_factory *images = gui->window->get_environment()->get_image_factory();
+    char imgname[64];
+    if (attribs.count("icon") != 0) {
+        sprintf(imgname, "toggle_%d_%s", get_int("size", 2), attribs["icon"].c_str());
+        if (!images->available(imgname))
+            sprintf(imgname, "toggle_%d", get_int("size", 2));
+    } else
+        sprintf(imgname, "toggle_%d", get_int("size", 2));
+    calf_toggle_set_pixbuf(toggle, images->get(imgname));
+    
     g_signal_connect (GTK_OBJECT (widget), "value-changed", G_CALLBACK (toggle_value_changed), (gpointer)this);
     //gtk_widget_set_name(GTK_WIDGET(widget), "Calf-ToggleButton");
     return widget;
@@ -935,7 +954,8 @@ void toggle_param_control::set()
 {
     _GUARD_CHANGE_
     const parameter_properties &props = get_props();
-    gtk_range_set_value(GTK_RANGE(widget), props.to_01 (gui->plugin->get_param_value(param_no)));
+    float value = gui->plugin->get_param_value(param_no);
+    gtk_range_set_value(GTK_RANGE(widget), props.to_01(value));
 }
 
 void toggle_param_control::toggle_value_changed(GtkWidget *widget, gpointer value)
@@ -955,6 +975,11 @@ GtkWidget *tap_button_param_control::create(plugin_gui *_gui, int _param_no)
     value     = 0;
     timer     = 0;
     widget    = calf_tap_button_new ();
+    // set pixbuf
+    calf_tap_button_set_pixbufs(CALF_TAP_BUTTON(widget),
+        gui->window->get_environment()->get_image_factory()->get("tap_inactive"),
+        gui->window->get_environment()->get_image_factory()->get("tap_prelight"),
+        gui->window->get_environment()->get_image_factory()->get("tap_active"));
     //CALF_TAP(widget)->size = get_int("size", 2);
     g_signal_connect (GTK_OBJECT (widget), "button-press-event", G_CALLBACK (tap_button_pressed), (gpointer)this);
     g_signal_connect (GTK_OBJECT (widget), "released", G_CALLBACK (tap_button_released), (gpointer)this);
@@ -1163,9 +1188,10 @@ GtkWidget *filechooser_param_control::create(plugin_gui *_gui, int _param_no)
     g_signal_connect(GTK_OBJECT(widget), "file-set", G_CALLBACK(filechooser_value_changed), (gpointer)this);
     if (attribs.count("width"))
         gtk_widget_set_size_request (widget, get_int("width", 200), -1);
-    if (attribs.count("width_chars"))
-         gtk_file_chooser_button_set_width_chars (filechooser, get_int("width_chars"));
-         gtk_widget_set_name(GTK_WIDGET(widget), "Calf-FileButton");
+    if (attribs.count("width_chars")) {
+        gtk_file_chooser_button_set_width_chars (filechooser, get_int("width_chars"));
+        gtk_widget_set_name(GTK_WIDGET(widget), "Calf-FileButton");
+    }
     return widget;
 }
 
@@ -1289,10 +1315,10 @@ GtkWidget *line_graph_param_control::create(plugin_gui *a_gui, int a_param_no)
             if(param_z_name != "") {
                 int param_z_no = gui->get_param_no_by_name(param_z_name);
                 const parameter_properties &handle_z_props = *gui->plugin->get_metadata_iface()->get_param_props(param_z_no);
-                handle->dimensions = 3;
                 handle->param_z_no = param_z_no;
                 handle->value_z = handle_z_props.to_01(gui->plugin->get_param_value(param_z_no));
                 handle->default_value_z = handle_z_props.to_01(handle_z_props.def_value);
+                handle->props_z = handle_z_props;
             } else {
                 handle->param_z_no = -1;
             }
@@ -1352,7 +1378,7 @@ void line_graph_param_control::get()
         } else if(clg->handle_hovered >= 0) {
             FreqHandle *handle = &clg->freq_handles[clg->handle_hovered];
 
-            if(handle->dimensions == 3) {
+            if(handle->param_z_no > -1) {
                 const parameter_properties &handle_z_props = *gui->plugin->get_metadata_iface()->get_param_props(handle->param_z_no);
                 float value_z = handle_z_props.from_01(handle->value_z);
                 gui->set_param_value(handle->param_z_no, value_z, this);
@@ -1412,7 +1438,7 @@ void line_graph_param_control::set()
                 }
             }
 
-            if(handle->dimensions == 3 && handle->param_z_no >= 0) {
+            if(handle->param_z_no >= 0) {
                 const parameter_properties &handle_z_props = *gui->plugin->get_metadata_iface()->get_param_props(handle->param_z_no);
                 float value_z = gui->plugin->get_param_value(handle->param_z_no);
                 handle->value_z = handle_z_props.to_01(value_z);
@@ -1526,6 +1552,88 @@ void tuner_param_control::set()
 
 tuner_param_control::~tuner_param_control()
 {
+}
+
+/******************************** Pattern ********************************/
+
+GtkWidget *pattern_param_control::create(plugin_gui *_gui, int _param_no)
+{
+    gui = _gui;
+    param_no = _param_no;
+    widget = calf_pattern_new ();
+    widget->requisition.width = get_int("width", 300);
+    widget->requisition.height = get_int("height", 60);
+    const string &beats_name = attribs["beats"];
+    if (beats_name != "") {
+        param_beats = gui->get_param_no_by_name(beats_name);
+        gui->add_param_ctl(param_beats, this);
+    } else param_beats = -1;
+    const string &bars_name = attribs["bars"];
+    if (bars_name != "") {
+        param_bars = gui->get_param_no_by_name(bars_name);
+        gui->add_param_ctl(param_bars, this);
+    } else param_bars = -1;
+    gtk_widget_set_name(GTK_WIDGET(widget), "Calf-Pattern");
+    g_signal_connect(GTK_OBJECT(widget), "handle-changed", (GCallback)on_handle_changed, this);
+    return widget;
+}
+
+void pattern_param_control::set()
+{
+    _GUARD_CHANGE_
+    CalfPattern *p = CALF_PATTERN(widget);
+
+    int b;
+    if (param_beats >= 0) {
+        b = gui->plugin->get_param_value(param_beats);
+        if (b != p->beats) {
+            p->beats = b;
+            p->force_redraw = true;
+            gtk_widget_queue_draw(widget);
+        }
+    }
+    if (param_bars >= 0) {
+        b = gui->plugin->get_param_value(param_bars);
+        if (b != p->bars) {
+            p->bars = b;
+            p->force_redraw = true;
+            gtk_widget_queue_draw(widget);
+        }
+    }
+}
+
+void pattern_param_control::send_configure(const char *key, const char *value)
+{
+    string orig_key = attribs["key"];
+    if (orig_key != key)
+        return;
+
+    CalfPattern *p = CALF_PATTERN(widget);
+    stringstream ss(value);
+    _GUARD_CHANGE_
+    for (int i = 0; i < p->bars; i++) {
+        for (int j = 0; j < p->beats; j++) {
+            ss >> p->values[i][j];
+        }
+    }
+    p->force_redraw = true;
+    gtk_widget_queue_draw(widget);
+}
+
+void pattern_param_control::on_handle_changed(CalfPattern *widget, calf_pattern_handle *handle, pattern_param_control *pThis)
+{
+    CalfPattern *p = CALF_PATTERN(widget);
+    stringstream ss;
+    for (int i = 0; i < p->bars; i++) {
+        for (int j = 0; j < p->beats; j++) {
+            ss << p->values[i][j] << " ";
+        }
+    }
+    assert(pThis);
+    string key = pThis->attribs["key"];
+    const char *error_or_null = pThis->gui->plugin->configure(key.c_str(), ss.str().c_str());
+    if (error_or_null)
+        g_warning("Unexpected error: %s", error_or_null);
 }
 
 /******************************** List View ********************************/
@@ -1657,7 +1765,7 @@ void listview_param_control::on_edited(GtkCellRenderer *renderer, gchar *path, g
     }
     else
     {
-        GtkWidget *dialog = gtk_message_dialog_new(pThis->gui->window->toplevel, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, 
+        GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(pThis->gui->window->toplevel), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, 
             "%s", error.c_str());
         gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
@@ -1683,14 +1791,19 @@ GtkWidget *notebook_param_control::create(plugin_gui *_gui, int _param_no)
         page = gui->plugin->get_param_value(param_no);
     GtkWidget *nb = calf_notebook_new();
     widget = GTK_WIDGET(nb);
-    gtk_widget_set_name(GTK_WIDGET(nb), "Calf-Notebook");
+    calf_notebook_set_pixbuf(CALF_NOTEBOOK(nb),
+        gui->window->get_environment()->get_image_factory()->get("notebook_screw"));
+    gtk_widget_set_name(widget, "Calf-Notebook");
     gtk_notebook_set_current_page(GTK_NOTEBOOK(widget), page);
     return nb;
 }
 void notebook_param_control::created()
 {
+    hook_params();
+    gtk_widget_show_all(widget);
+    gtk_notebook_set_current_page(GTK_NOTEBOOK(widget), page);
     g_signal_connect (GTK_OBJECT (widget), "switch-page", G_CALLBACK (notebook_page_changed), (gpointer)this);
-    set();
+    //set();
 }
 void notebook_param_control::get()
 {

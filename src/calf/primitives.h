@@ -342,70 +342,6 @@ public:
     }
 };
 
-class scheduler;
-
-class task {
-public:
-    virtual void execute(scheduler *s)=0;
-    virtual void dispose() { delete this; }
-    virtual ~task() {}
-};
-
-/// this scheduler is based on std::multimap, so it isn't very fast, I guess
-/// maybe some day it should be rewritten to use heapsort or something
-/// work in progress, don't use!
-class scheduler {
-    std::multimap<unsigned int, task *> timeline;
-    unsigned int time, next_task;
-    bool eob;
-    class end_buf_task: public task {
-    public:
-        scheduler *p;
-        end_buf_task(scheduler *_p) : p(_p) {}
-        virtual void execute(scheduler *s) { p->eob = true; }
-        virtual void dispose() { }
-    } eobt;
-public:
-
-    scheduler()
-    : time(0)
-    , next_task((unsigned)-1)
-    , eob(true)
-    , eobt (this)
-    {
-        time = 0;
-        next_task = (unsigned)-1;
-        eob = false;
-    }
-    inline bool is_next_tick() {
-        if (time < next_task)
-            return true;
-        do_tasks();
-        return false;
-    }
-    inline void next_tick() {
-        time++;
-    }
-    void set(int pos, task *t) {
-        timeline.insert(std::pair<unsigned int, task *>(time+pos, t));
-        next_task = timeline.begin()->first;
-    }
-    void do_tasks() {
-        std::multimap<unsigned int, task *>::iterator i = timeline.begin();
-        while(i != timeline.end() && i->first == time) {
-            i->second->execute(this);
-            i->second->dispose();
-            timeline.erase(i);
-        }
-    }
-    bool is_eob() {
-        return eob;
-    }
-    void set_buffer_size(int count) {
-        set(count, &eobt);
-    }
-};
-
 /**
  * Force "small enough" float value to zero
  */
@@ -597,22 +533,43 @@ inline note_desc hz_to_note (double hz, double tune)
 {
     note_desc desc;
     static const char notenames[] = "C\0\0C#\0D\0\0D#\0E\0\0F\0\0F#\0G\0\0G#\0A\0\0A#\0B\0\0";
-    double f2 = hz / tune;
-    double lf2 = logf(f2);
-    double rf2 = 1200 * lf2 / logf(2.f) - 300;
-    rf2 -= 1200.f * floor(rf2 / 1200.f);
-    int note = round(rf2 / 100.f);
-    rf2 -= note * 100;
-    if (note == 12)
-        note -= 12;
-    int mnote = round(12 * log2(f2)) + 57;
+    double f2 = log2(hz / tune);
+    double cn = fmod(f2 * 1200., 100.);
     desc.freq   = hz;
-    desc.note   = mnote;
-    desc.cents  = rf2;
-    desc.octave = int(mnote / 12) - 2;
-    desc.name   = notenames + (mnote % 12) * 3;
+    desc.note   = std::max(0., round(12 * f2 + 69));
+    desc.name   = notenames + (desc.note % 12) * 3;
+    desc.cents  = (cn < -50) ? 100 + cn : (cn > 50) ? -(100 - cn) : cn;
+    desc.octave = int(desc.note / 12) - 1;
     return desc;
 }
+
+
+enum periodic_unit { UNIT_BPM, UNIT_MS, UNIT_HZ, UNIT_SYNC };
+
+inline double convert_periodic (double val, periodic_unit unit_in, periodic_unit unit_out)
+{
+    // calculates different periodical units into each other.
+    // it is used for e.g. pulsator or vintage delay to unify
+    // the selected timing method
+    if (unit_in == unit_out)
+        return val;
+    double freq = 0.;
+    switch (unit_in) {
+        case UNIT_BPM:  freq = val / 60.;          break;
+        case UNIT_MS:   freq = 1. / (val / 1000.); break;
+        case UNIT_HZ:   freq = val;                break;
+        case UNIT_SYNC: freq = val / 60.;          break;
+    }
+    switch (unit_out) {
+        default:
+        case UNIT_BPM:  return freq * 60.;
+        case UNIT_MS:   return (1. / freq) / 1000.;
+        case UNIT_HZ:   return freq;
+        case UNIT_SYNC: return freq * 60.;
+    }
+};
+
+
 
 };
 #endif

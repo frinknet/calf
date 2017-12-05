@@ -20,7 +20,33 @@
 #ifndef __CALF_GUI_CONTROLS_H
 #define __CALF_GUI_CONTROLS_H
 
-#include "gui.h"
+#include <config.h>
+#include <assert.h>
+#include <sys/time.h>
+#include <calf/ctl_curve.h>
+#include <calf/ctl_keyboard.h>
+#include <calf/ctl_knob.h>
+#include <calf/ctl_led.h>
+#include <calf/ctl_tube.h>
+#include <calf/ctl_vumeter.h>
+#include <calf/ctl_frame.h>
+#include <calf/ctl_fader.h>
+#include <calf/ctl_notebook.h>
+#include <calf/ctl_meterscale.h>
+#include <calf/ctl_phasegraph.h>
+#include <calf/ctl_linegraph.h>
+#include <calf/ctl_buttons.h>
+#include <calf/ctl_tuner.h>
+#include <calf/ctl_combobox.h>
+#include <calf/ctl_pattern.h>
+#include <calf/giface.h>
+#include <calf/gui.h>
+#include <calf/utils.h>
+#include <gdk/gdk.h>
+#include <gdk/gdkkeysyms.h>
+#include <iostream>
+#include <vector>
+#include <algorithm>
 
 struct CalfCurve;
 struct CalfKeyboard;
@@ -257,6 +283,17 @@ struct tuner_param_control: public param_control
     virtual void on_idle();
     int cents_no;
     virtual ~tuner_param_control();
+};
+
+/// Pattern
+struct pattern_param_control: public param_control
+{
+    virtual GtkWidget *create(plugin_gui *_gui, int _param_no);
+    virtual void get() {}
+    virtual void set();
+    virtual void send_configure(const char *key, const char *value);
+    static void on_handle_changed(CalfPattern *widget, calf_pattern_handle *handle, pattern_param_control *pThis);
+    int param_bars, param_beats;
 };
 
 /// Knob
