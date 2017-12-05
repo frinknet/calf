@@ -79,10 +79,14 @@ control_base *plugin_gui::create_widget_from_xml(const char *element, const char
         return new line_graph_param_control;
     if (!strcmp(element, "phase-graph"))
         return new phase_graph_param_control;
+    if (!strcmp(element, "tuner"))
+        return new tuner_param_control;
     if (!strcmp(element, "keyboard"))
         return new keyboard_param_control;
     if (!strcmp(element, "curve"))
         return new curve_param_control;
+    if (!strcmp(element, "meterscale"))
+        return new meter_scale_param_control;
     if (!strcmp(element, "led"))
         return new led_param_control;
     if (!strcmp(element, "tube"))

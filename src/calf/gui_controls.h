@@ -178,11 +178,12 @@ struct toggle_param_control: public param_control
 struct tap_button_param_control: public param_control
 {
     guint last_time;
-    unsigned long init_time;
+    gint timer;
     float avg_value, value;
     virtual GtkWidget *create(plugin_gui *_gui, int _param_no);
     virtual void get();
     virtual void set();
+    static void tap_button_stop_waiting(gpointer value);
     static gboolean tap_button_released(GtkWidget *widget, gpointer value);
     static gboolean tap_button_pressed(GtkWidget *widget, GdkEventButton *event, gpointer value);
 };
@@ -247,6 +248,17 @@ struct phase_graph_param_control: public param_control
     virtual ~phase_graph_param_control();
 };
 
+/// Tuner
+struct tuner_param_control: public param_control
+{
+    virtual GtkWidget *create(plugin_gui *_gui, int _param_no);
+    virtual void get() {}
+    virtual void set();
+    virtual void on_idle();
+    int cents_no;
+    virtual ~tuner_param_control();
+};
+
 /// Knob
 struct knob_param_control: public param_control
 {
@@ -264,6 +276,7 @@ struct keyboard_param_control: public param_control
     virtual GtkWidget *create(plugin_gui *_gui, int _param_no);
     virtual void get() {}
     virtual void set() {}
+    virtual void send_configure(const char *key, const char *value) {}
 };
 
 /// Curve editor
@@ -275,6 +288,15 @@ struct curve_param_control: public param_control, public send_configure_iface
     virtual void get() {}
     virtual void set() {}
     virtual void send_configure(const char *key, const char *value);
+};
+
+/// Meter scale
+struct meter_scale_param_control: public param_control, public send_configure_iface
+{
+    virtual GtkWidget *create(plugin_gui *_gui, int _param_no);
+    virtual void get() {}
+    virtual void set() {}
+    virtual void send_configure(const char *key, const char *value) {};
 };
 
 /// Text entry

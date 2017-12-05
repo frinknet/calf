@@ -65,9 +65,11 @@ const char *eq_analyzer_mode_names[] = { "Input", "Output", "Difference" };
     { 0,           0,           5,     0,  PF_ENUM | PF_CTL_COMBO, active_mode_names, "ls_active", "LS Active" }, \
     { 1,           0.015625,    64,    0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_KNOB | PF_UNIT_DB, NULL, "ls_level", "Level L" }, \
     { 100,         10,          20000, 0,  PF_FLOAT | PF_SCALE_LOG | PF_CTL_KNOB | PF_UNIT_HZ, NULL, "ls_freq", "Freq L" }, \
+    { 0.707,       0.1,         10,    1,  PF_FLOAT | PF_SCALE_LOG | PF_CTL_KNOB | PF_UNIT_COEF, NULL, "ls_q", "LS Q" }, \
     { 0,           0,           5,     0,  PF_ENUM | PF_CTL_COMBO, active_mode_names, "hs_active", "HS Active" }, \
     { 1,           0.015625,    64,    0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_KNOB | PF_UNIT_DB, NULL, "hs_level", "Level H" }, \
-    { 5000,        10,          20000, 0,  PF_FLOAT | PF_SCALE_LOG | PF_CTL_KNOB | PF_UNIT_HZ, NULL, "hs_freq", "Freq H" },
+    { 5000,        10,          20000, 0,  PF_FLOAT | PF_SCALE_LOG | PF_CTL_KNOB | PF_UNIT_HZ, NULL, "hs_freq", "Freq H" }, \
+    { 0.707,       0.1,         10,    1,  PF_FLOAT | PF_SCALE_LOG | PF_CTL_KNOB | PF_UNIT_COEF, NULL, "hs_q", "HS Q" },
 
 #define EQ_BAND_PARAMS(band, frequency) \
     { 0,           0,           5,     0,  PF_ENUM | PF_CTL_COMBO, active_mode_names, "p" #band "_active", "F" #band " Active" }, \
@@ -777,13 +779,13 @@ CALF_PLUGIN_INFO(sidechainlimiter) = { 0x8522, "SidechainLimiter", "Calf Sidecha
 CALF_PORT_NAMES(emphasis) = {"In L", "In R", "Out L", "Out R"};
 
 const char *emphasis_filter_modes[] = { "Reproduction", "Production"};
-const char *emphasis_filter_types[] = { "Columbia", "EMI", "BSI(78rpm)", "RIAA", "Compact Disc (CD)"};
+const char *emphasis_filter_types[] = { "Columbia", "EMI", "BSI(78rpm)", "RIAA", "Compact Disc (CD)", "50µs (FM)", "75µs (FM)", "50µs (FM-KF)", "75µs (FM-KF)",  };
 
 CALF_PORT_PROPS(emphasis) = {
     BYPASS_AND_LEVEL_PARAMS
     METERING_PARAMS
     { 0,      0,  1,    0, PF_ENUM | PF_CTL_COMBO, emphasis_filter_modes, "mode", "Filter Mode" },
-    { 4,      0,  4,    0, PF_ENUM | PF_CTL_COMBO, emphasis_filter_types, "type", "Filter Type" },
+    { 4,      0,  8,    0, PF_ENUM | PF_CTL_COMBO, emphasis_filter_types, "type", "Filter Type" },
     {}
 };
 CALF_PLUGIN_INFO(emphasis) = { 0x8599, "Emphasis", "Calf Emphasis", "Calf Studio Gear / Damien Zammit", calf_plugins::calf_copyright_info, "FilterPlugin" };
@@ -1603,7 +1605,7 @@ void monosynth_metadata::get_configure_vars(vector<string> &names) const
 
 CALF_PLUGIN_INFO(organ) = { 0x8481, "Organ", "Calf Organ", "Calf Studio Gear / Krzysztof Foltman", calf_plugins::calf_copyright_info, "InstrumentPlugin" };
 
-plugin_command_info *organ_metadata::get_commands()
+plugin_command_info *organ_metadata::get_commands() const
 {
     static plugin_command_info cmds[] = {
         { "cmd_panic", "Panic!", "Stop all sounds and reset all controllers" },
@@ -1942,6 +1944,82 @@ void wavetable_metadata::get_configure_vars(std::vector<std::string> &names) con
 {
     mm_metadata.get_configure_vars(names);
 }
+
+////////////////////////////////////////////////////////////////////////////
+
+CALF_PORT_NAMES(pitch) = {"In L", "In R", "Out L", "Out R"};
+CALF_PORT_PROPS(pitch) = {
+    { 0.9,  0.1,   1,    0, PF_FLOAT | PF_SCALE_PERC | PF_CTL_KNOB, NULL, "pd_threshold", "Pitch Det:Peak Threshold" },
+    { 1,      1,   8,    3, PF_INT | PF_CTL_KNOB, NULL, "pd_subdivide", "Pitch Det:Subdiv" },
+    { 440,    427, 453,  0.1, PF_FLOAT | PF_CTL_KNOB | PF_UNIT_HZ, NULL, "tune", "Tune" },
+    { 0,      0,   127,  1, PF_INT | PF_PROP_OUTPUT, NULL, "note", "MIDI Note" },
+    { 0,     -100, 100,  1, PF_FLOAT | PF_PROP_OUTPUT, NULL, "cents", "Cents" },
+    { 0,     -1, 1,      0, PF_FLOAT | PF_SCALE_PERC | PF_PROP_OUTPUT, NULL, "clarity", "Clarity" },
+    { 1,     1, 20000,   1, PF_FLOAT | PF_PROP_OUTPUT | PF_SCALE_LOG | PF_CTL_KNOB | PF_UNIT_HZ, NULL, "freq", "Frequency" },
+    {}
+};
+
+CALF_PLUGIN_INFO(pitch) = { 0x85AA, "Pitch", "Calf Pitch Tols", "Calf Studio Gear", calf_plugins::calf_copyright_info, "PitchPlugin" };
+
+////////////////////////////////////////////////////////////////////////////
+
+#if ENABLE_EXPERIMENTAL
+CALF_PORT_NAMES(trigger) = {"In L", "In R", "Out L", "Out R"};
+
+const char *trigger_dynamics_mode[] = {
+    "Level",
+    "Peak"
+};
+
+const char *trigger_dynamics_func[] = {
+    "Linear",
+    "Root",
+    "Quad"
+};
+
+const char *trigger_file_track[] = {
+    "Track 1",
+    "Track 2",
+    "Track 3",
+    "Track 4",
+    "Track 5",
+    "Track 6",
+    "Track 7",
+    "Track 8"
+};
+
+CALF_PORT_PROPS(trigger) = {
+    // default, min, max, step, flags, choices, short_name, long name
+    { 0,           0,           1,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_METER | PF_CTLO_LABEL | PF_UNIT_DB | PF_PROP_OUTPUT | PF_PROP_OPTIONAL, NULL, "mtr_input_l", "Input level L" },
+    { 0,           0,           1,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_METER | PF_CTLO_LABEL | PF_UNIT_DB | PF_PROP_OUTPUT | PF_PROP_OPTIONAL, NULL, "mtr_input_r", "Input level R" },
+    { 0,           0,           1,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_METER | PF_CTLO_LABEL | PF_UNIT_DB | PF_PROP_OUTPUT | PF_PROP_OPTIONAL, NULL, "mtr_output_l", "Output level L" },
+    { 0,           0,           1,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_METER | PF_CTLO_LABEL | PF_UNIT_DB | PF_PROP_OUTPUT | PF_PROP_OPTIONAL, NULL, "mtr_output_r", "Output level R" },
+    { 0,           0,           1,     0,  PF_FLOAT | PF_CTL_LED | PF_PROP_OUTPUT | PF_PROP_OPTIONAL, NULL, "flash_l", "Fired L" },
+    { 0,           0,           1,     0,  PF_FLOAT | PF_CTL_LED | PF_PROP_OUTPUT | PF_PROP_OPTIONAL, NULL, "flash_r", "Fired R" },
+
+    // params
+    { 0,           0,           1,     0,  PF_BOOL | PF_CTL_TOGGLE, NULL, "bypass", "Bypass" },
+    { 1,           0,           4,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_KNOB | PF_UNIT_COEF | PF_PROP_NOBOUNDS , NULL, "in_gain", "Input" },
+    { 5,           0.1,         20,    0,  PF_FLOAT | PF_SCALE_LINEAR | PF_CTL_KNOB | PF_UNIT_MSEC | PF_PROP_GRAPH, NULL, "lookup", "Look-ahead" },
+    { 0.7,         0,           1,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_KNOB | PF_UNIT_COEF | PF_PROP_NOBOUNDS, NULL, "open_threshold", "Open threshold" },
+    { 0.6,         0,           1,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_KNOB | PF_UNIT_COEF | PF_PROP_NOBOUNDS, NULL, "close_threshold", "Close threshold" },
+    { 1,           0.1,         50,    0,  PF_FLOAT | PF_SCALE_LOG | PF_CTL_KNOB | PF_UNIT_MSEC | PF_PROP_GRAPH, NULL, "release", "Release" },
+    { 0,           0,           7,     1,  PF_ENUM | PF_SCALE_LINEAR | PF_CTL_COMBO, trigger_file_track, "sample_track_l", "File track L" },
+    { 1,           0,           7,     1,  PF_ENUM | PF_SCALE_LINEAR | PF_CTL_COMBO, trigger_file_track, "sample_track_r", "File track R" },
+    { 0,           0,           100,   0,  PF_FLOAT | PF_SCALE_LINEAR | PF_CTL_KNOB | PF_UNIT_MSEC | PF_PROP_GRAPH, NULL, "head_cutoff", "Sample head cutoff" },
+    { 1,           0,           1,     0,  PF_FLOAT | PF_SCALE_PERC | PF_CTL_KNOB, NULL, "tail_cutoff", "Sample tail" },
+    { 8,           1,           16,    0,  PF_INT | PF_SCALE_LINEAR | PF_CTL_KNOB, NULL, "playbacks", "Max sample playbacks" },
+    { 0,           0,           1,     1,  PF_ENUM | PF_SCALE_LINEAR | PF_CTL_COMBO, trigger_dynamics_mode, "dyn_mode", "Dynamics mode" },
+    { 0,           0,           2,     1,  PF_ENUM | PF_SCALE_LINEAR | PF_CTL_COMBO, trigger_dynamics_func, "dyn_function", "Dynamics function" },
+    { 0.5,         0,           1,     0,  PF_FLOAT | PF_SCALE_PERC | PF_CTL_KNOB, NULL, "dyn_amount", "Dynamics amount" },
+    { 0,           0,           1,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_KNOB | PF_UNIT_COEF | PF_PROP_NOBOUNDS, NULL, "dry", "Dry signal" },
+    { 1,           0,           1,     0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_KNOB | PF_UNIT_COEF | PF_PROP_NOBOUNDS, NULL, "wet", "Wet signal" },
+    { 1,           0,           10,    0,  PF_FLOAT | PF_SCALE_GAIN | PF_CTL_KNOB | PF_UNIT_COEF | PF_PROP_NOBOUNDS , NULL, "out_gain", "Output" },
+    {}
+};
+
+CALF_PLUGIN_INFO(trigger) = { 0x8487, "Trigger", "Calf Trigger", "Vladimir Sadovnikov", calf_plugins::calf_copyright_info, "TriggerPlugin" };
+#endif /* ENABLE_EXPERIMENTAL */
 
 ////////////////////////////////////////////////////////////////////////////
 

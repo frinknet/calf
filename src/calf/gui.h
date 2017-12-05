@@ -57,6 +57,7 @@ public:
     void require_int_attribute(const char *name);
     int get_int(const char *name, int def_value = 0);
     float get_float(const char *name, float def_value = 0.f);
+    std::vector<double> get_vector(const char *name, std::string &value);
 
 public:
     virtual GtkWidget *create(plugin_gui *_gui) { return NULL; }
@@ -314,7 +315,7 @@ public:
 
     plugin_gui_window(gui_environment_iface *_env, main_window_iface *_main);
     std::string make_gui_preset_list(GtkActionGroup *grp, bool builtin, char &ch);
-    std::string make_gui_command_list(GtkActionGroup *grp);
+    std::string make_gui_command_list(GtkActionGroup *grp, const plugin_metadata_iface *metadata);
     void fill_gui_presets(bool builtin, char &ch);
     void create(plugin_ctl_iface *_plugin, const char *title, const char *effect);
     void close();

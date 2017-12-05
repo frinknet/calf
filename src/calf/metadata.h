@@ -51,7 +51,7 @@ struct filter_metadata: public plugin_metadata<filter_metadata>
     enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, require_midi = false, support_midi = false };
     PLUGIN_NAME_ID_LABEL("filter", "filter", "Filter")
     /// do not export mode and inertia as CVs, as those are settings and not parameters
-    bool is_cv(int param_no) { return param_no != par_mode && param_no != par_inertia; }
+    bool is_cv(int param_no) const { return param_no != par_mode && param_no != par_inertia; }
 };
 
 /// Filterclavier - metadata
@@ -61,7 +61,7 @@ struct filterclavier_metadata: public plugin_metadata<filterclavier_metadata>
     enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, require_midi = true, support_midi = true };
     PLUGIN_NAME_ID_LABEL("filterclavier", "filterclavier", "Filterclavier")
     /// do not export mode and inertia as CVs, as those are settings and not parameters
-    bool is_cv(int param_no) { return param_no != par_mode && param_no != par_inertia; }
+    bool is_cv(int param_no) const { return param_no != par_mode && param_no != par_inertia; }
 };
 
 /// Envelope Filter - metadata
@@ -380,8 +380,8 @@ struct equalizer5band_metadata: public plugin_metadata<equalizer5band_metadata>
     enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
-           param_ls_active, param_ls_level, param_ls_freq,
-           param_hs_active, param_hs_level, param_hs_freq,
+           param_ls_active, param_ls_level, param_ls_freq, param_ls_q,
+           param_hs_active, param_hs_level, param_hs_freq, param_hs_q,
            param_p1_active, param_p1_level, param_p1_freq, param_p1_q,
            param_p2_active, param_p2_level, param_p2_freq, param_p2_q,
            param_p3_active, param_p3_level, param_p3_freq, param_p3_q,
@@ -402,8 +402,8 @@ struct equalizer8band_metadata: public plugin_metadata<equalizer8band_metadata>
            STEREO_VU_METER_PARAMS,
            param_hp_active, param_hp_freq, param_hp_mode,
            param_lp_active, param_lp_freq, param_lp_mode,
-           param_ls_active, param_ls_level, param_ls_freq,
-           param_hs_active, param_hs_level, param_hs_freq,
+           param_ls_active, param_ls_level, param_ls_freq, param_ls_q,
+           param_hs_active, param_hs_level, param_hs_freq, param_hs_q,
            param_p1_active, param_p1_level, param_p1_freq, param_p1_q,
            param_p2_active, param_p2_level, param_p2_freq, param_p2_q,
            param_p3_active, param_p3_level, param_p3_freq, param_p3_q,
@@ -421,8 +421,8 @@ struct equalizer12band_metadata: public plugin_metadata<equalizer12band_metadata
            STEREO_VU_METER_PARAMS,
            param_hp_active, param_hp_freq, param_hp_mode,
            param_lp_active, param_lp_freq, param_lp_mode,
-           param_ls_active, param_ls_level, param_ls_freq,
-           param_hs_active, param_hs_level, param_hs_freq,
+           param_ls_active, param_ls_level, param_ls_freq, param_ls_q,
+           param_hs_active, param_hs_level, param_hs_freq, param_hs_q,
            param_p1_active, param_p1_level, param_p1_freq, param_p1_q,
            param_p2_active, param_p2_level, param_p2_freq, param_p2_q,
            param_p3_active, param_p3_level, param_p3_freq, param_p3_q,
@@ -828,7 +828,7 @@ struct organ_metadata: public organ_enums, public plugin_metadata<organ_metadata
     PLUGIN_NAME_ID_LABEL("organ", "organ", "Organ")
 
 public:
-    plugin_command_info *get_commands();
+    plugin_command_info *get_commands() const;
     void get_configure_vars(std::vector<std::string> &names) const;
 };
 
@@ -925,6 +925,74 @@ struct wavetable_metadata: public plugin_metadata<wavetable_metadata>
     /// Lookup of table edit interface
     virtual const table_metadata_iface *get_table_metadata_iface(const char *key) const { if (!strcmp(key, "mod_matrix")) return &mm_metadata; else return NULL; }
     void get_configure_vars(std::vector<std::string> &names) const;
+};
+
+struct pitch_metadata: public plugin_metadata<pitch_metadata>
+{
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { 
+        par_pd_threshold,
+        par_pd_subdivide,
+        par_tune, par_note, par_cents, par_clarity, par_freq,
+        param_count
+    };
+    PLUGIN_NAME_ID_LABEL("pitch", "pitch", "Pitch Tools")
+};
+
+// Trigger metadata
+struct trigger_metadata: public plugin_metadata<trigger_metadata>
+{
+    // Parameters
+    enum
+    {
+        mtr_input_l,
+        mtr_input_r,
+        mtr_output_l,
+        mtr_output_r,
+        flash_l,
+        flash_r,
+
+        par_bypass,
+        par_in_gain,
+        par_lookup,
+        par_open_threshold,
+        par_close_threshold,
+        par_release,
+        par_sample_track_l,
+        par_sample_track_r,
+        par_sample_head,
+        par_sample_tail,
+        par_sample_playbacks,
+        par_dyn_mode,
+        par_dyn_function,
+        par_dyn_amount,
+        par_dry,
+        par_wet,
+        par_out_gain,
+
+        param_count
+    };
+
+    // Modes of dynamic
+    enum
+    {
+        dyn_mode1,
+        dyn_mode2
+    };
+
+    // Inputs, outputs, etc...
+    enum
+    {
+        in_count = 2,
+        out_count = 2,
+        ins_optional = 0,
+        outs_optional = 0,
+        rt_capable = true,
+        support_midi = false,
+        require_midi = false
+    };
+
+    PLUGIN_NAME_ID_LABEL("trigger", "trigger", "Trigger")
 };
 
 };
