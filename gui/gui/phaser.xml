@@ -81,7 +81,7 @@
         
         <if cond="directlink">
             <frame label="Frequency response" attach-x="1" attach-y="0" >
-               <vbox expand-x="1" fill-x="1" >
+                <vbox expand-x="1" fill-x="1" >
                     <line-graph refresh="1" width="160" height="160" param="base_freq" crosshairs="1"/>
                 </vbox>
             </frame>
