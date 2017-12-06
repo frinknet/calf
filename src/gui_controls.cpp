@@ -312,6 +312,7 @@ void combo_box_param_control::set()
     {
         const parameter_properties &props = get_props();
         gtk_combo_box_set_active (GTK_COMBO_BOX (widget), (int)gui->plugin->get_param_value(param_no) - (int)props.min);
+        gtk_widget_queue_draw(widget);
     }
 }
 
@@ -953,7 +954,8 @@ void toggle_param_control::set()
 {
     _GUARD_CHANGE_
     const parameter_properties &props = get_props();
-    gtk_range_set_value(GTK_RANGE(widget), props.to_01 (gui->plugin->get_param_value(param_no)));
+    float value = gui->plugin->get_param_value(param_no);
+    gtk_range_set_value(GTK_RANGE(widget), props.to_01(value));
 }
 
 void toggle_param_control::toggle_value_changed(GtkWidget *widget, gpointer value)
@@ -1186,9 +1188,10 @@ GtkWidget *filechooser_param_control::create(plugin_gui *_gui, int _param_no)
     g_signal_connect(GTK_OBJECT(widget), "file-set", G_CALLBACK(filechooser_value_changed), (gpointer)this);
     if (attribs.count("width"))
         gtk_widget_set_size_request (widget, get_int("width", 200), -1);
-    if (attribs.count("width_chars"))
-         gtk_file_chooser_button_set_width_chars (filechooser, get_int("width_chars"));
-         gtk_widget_set_name(GTK_WIDGET(widget), "Calf-FileButton");
+    if (attribs.count("width_chars")) {
+        gtk_file_chooser_button_set_width_chars (filechooser, get_int("width_chars"));
+        gtk_widget_set_name(GTK_WIDGET(widget), "Calf-FileButton");
+    }
     return widget;
 }
 
@@ -1268,7 +1271,11 @@ GtkWidget *line_graph_param_control::create(plugin_gui *a_gui, int a_param_no)
     const string &zoom_name = attribs["zoom"];
     if (zoom_name != "")
         clg->param_zoom = gui->get_param_no_by_name(zoom_name);
-    
+
+    const string &drawl_name = attribs["draw_labels"];
+    if (drawl_name != "")
+        clg->param_drawl = gui->get_param_no_by_name(drawl_name);
+
     const string &offset_name = attribs["offset"];
     if (offset_name != "")
         clg->param_offset = gui->get_param_no_by_name(offset_name);
@@ -1395,7 +1402,18 @@ void line_graph_param_control::set()
         int ws = gdk_window_get_state(widget->window);
         if (ws & (GDK_WINDOW_STATE_WITHDRAWN | GDK_WINDOW_STATE_ICONIFIED))
             return;
-        
+
+        if (clg->param_drawl >= 0) {
+            int _d = gui->plugin->get_param_value(clg->param_drawl);
+            if (_d != clg->drawl) {
+                clg->force_redraw = true;
+                force = true;
+                if (_d > 0)
+                    clg->drawl = true;
+                else
+                    clg->drawl = false;
+            }
+        }
         if (clg->param_zoom >= 0) {
             float _z = gui->plugin->get_param_value(clg->param_zoom);
             if (_z != clg->zoom) {
@@ -1796,8 +1814,11 @@ GtkWidget *notebook_param_control::create(plugin_gui *_gui, int _param_no)
 }
 void notebook_param_control::created()
 {
+    hook_params();
+    gtk_widget_show_all(widget);
+    gtk_notebook_set_current_page(GTK_NOTEBOOK(widget), page);
     g_signal_connect (GTK_OBJECT (widget), "switch-page", G_CALLBACK (notebook_page_changed), (gpointer)this);
-    set();
+    //set();
 }
 void notebook_param_control::get()
 {

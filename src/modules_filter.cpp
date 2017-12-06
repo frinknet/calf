@@ -43,8 +43,8 @@ inline void undiff_ms(float &left, float &right) {
     left = tmp;
 }
 
-template<class BaseClass, bool has_lphp>
-equalizerNband_audio_module<BaseClass, has_lphp>::equalizerNband_audio_module()
+template<class BaseClass, bool has_lphp, bool has_lshs>
+equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::equalizerNband_audio_module()
 {
     is_active = false;
     srate = 0;
@@ -67,16 +67,16 @@ equalizerNband_audio_module<BaseClass, has_lphp>::equalizerNband_audio_module()
     redraw_graph = true;
 }
 
-template<class BaseClass, bool has_lphp>
-void equalizerNband_audio_module<BaseClass, has_lphp>::activate()
+template<class BaseClass, bool has_lphp, bool has_lshs>
+void equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::activate()
 {
     is_active = true;
     // set all filters
     params_changed();
 }
 
-template<class BaseClass, bool has_lphp>
-void equalizerNband_audio_module<BaseClass, has_lphp>::deactivate()
+template<class BaseClass, bool has_lphp, bool has_lshs>
+void equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::deactivate()
 {
     is_active = false;
 }
@@ -100,8 +100,8 @@ static inline double glide(double value, double target, int &keep_gliding)
         return std::max(target, (value / 1.003) - 0.1);
 }
 
-template<class BaseClass, bool has_lphp>
-void equalizerNband_audio_module<BaseClass, has_lphp>::params_changed()
+template<class BaseClass, bool has_lphp, bool has_lshs>
+void equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::params_changed()
 {
     keep_gliding = 0;
     // set the params of all filters
@@ -129,26 +129,30 @@ void equalizerNband_audio_module<BaseClass, has_lphp>::params_changed()
         }
     }
     
-    // then shelves
-    float hsfreq = *params[AM::param_hs_freq], hslevel = *params[AM::param_hs_level], hsq =*params[AM::param_hs_q];
-    float lsfreq = *params[AM::param_ls_freq], lslevel = *params[AM::param_ls_level], lsq =*params[AM::param_ls_q];
+    // ls/hs first (if available)
+    if (has_lshs)
+    {
+        float hsfreq = *params[AM::param_hs_freq], hslevel = *params[AM::param_hs_level], hsq =*params[AM::param_hs_q];
+        float lsfreq = *params[AM::param_ls_freq], lslevel = *params[AM::param_ls_level], lsq =*params[AM::param_ls_q];
     
-    if(lsfreq != ls_freq_old or lslevel != ls_level_old or lsq != ls_q_old) {
-        lsfreq = glide(ls_freq_old, lsfreq, keep_gliding);
-        lsL.set_lowshelf_rbj(lsfreq, lsq, lslevel, (float)srate);
-        lsR.copy_coeffs(lsL);
-        ls_level_old = lslevel;
-        ls_freq_old = lsfreq;
-        ls_q_old = lsq;
+        if(lsfreq != ls_freq_old or lslevel != ls_level_old or lsq != ls_q_old) {
+            lsfreq = glide(ls_freq_old, lsfreq, keep_gliding);
+            lsL.set_lowshelf_rbj(lsfreq, lsq, lslevel, (float)srate);
+            lsR.copy_coeffs(lsL);
+            ls_level_old = lslevel;
+            ls_freq_old = lsfreq;
+            ls_q_old = lsq;
+        }
+        if(hsfreq != hs_freq_old or hslevel != hs_level_old or hsq != hs_q_old) {
+            hsfreq = glide(hs_freq_old, hsfreq, keep_gliding);
+            hsL.set_highshelf_rbj(hsfreq, hsq, hslevel, (float)srate);
+            hsR.copy_coeffs(hsL);
+            hs_level_old = hslevel;
+            hs_freq_old = hsfreq;
+            hs_q_old = hsq;
+        }
     }
-    if(hsfreq != hs_freq_old or hslevel != hs_level_old or hsq != hs_q_old) {
-        hsfreq = glide(hs_freq_old, hsfreq, keep_gliding);
-        hsL.set_highshelf_rbj(hsfreq, hsq, hslevel, (float)srate);
-        hsR.copy_coeffs(hsL);
-        hs_level_old = hslevel;
-        hs_freq_old = hsfreq;
-        hs_q_old = hsq;
-    }
+
     for (int i = 0; i < AM::PeakBands; i++)
     {
         int offset = i * params_per_band;
@@ -188,8 +192,8 @@ void equalizerNband_audio_module<BaseClass, has_lphp>::params_changed()
     }
 }
 
-template<class BaseClass, bool has_lphp>
-inline void equalizerNband_audio_module<BaseClass, has_lphp>::process_hplp(float &left, float &right)
+template<class BaseClass, bool has_lphp, bool has_lshs>
+inline void equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::process_hplp(float &left, float &right)
 {
     if (!has_lphp)
         return;
@@ -249,8 +253,8 @@ inline void equalizerNband_audio_module<BaseClass, has_lphp>::process_hplp(float
     }
 }
 
-template<class BaseClass, bool has_lphp>
-uint32_t equalizerNband_audio_module<BaseClass, has_lphp>::process(uint32_t offset, uint32_t numsamples, uint32_t inputs_mask, uint32_t outputs_mask)
+template<class BaseClass, bool has_lphp, bool has_lshs>
+uint32_t equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::process(uint32_t offset, uint32_t numsamples, uint32_t inputs_mask, uint32_t outputs_mask)
 {
     bool bypassed = bypass.update(*params[AM::param_bypass] > 0.5f, numsamples);
     if (keep_gliding)
@@ -297,22 +301,24 @@ uint32_t equalizerNband_audio_module<BaseClass, has_lphp>::process(uint32_t offs
             
             // all filters in chain
             process_hplp(procL, procR);
-            
-            int active = *params[AM::param_ls_active];
-            if (active > 3) diff_ms(procL, procR);
-            if (active == 1 or active == 2 or active == 4)
-                procL = lsL.process(procL);
-            if (active == 1 or active == 3 or active == 5)
-                procR = lsR.process(procR);
-            if (active > 3) undiff_ms(procL, procR);
-            
-            active = *params[AM::param_hs_active];
-            if (active > 3) diff_ms(procL, procR);
-            if (active == 1 or active == 2 or active == 4)
-                procL = hsL.process(procL);
-            if (active == 1 or active == 3 or active == 5)
-                procR = hsR.process(procR);
-            if (active > 3) undiff_ms(procL, procR);
+
+            if (has_lshs) {            
+                int active = *params[AM::param_ls_active];
+                if (active > 3) diff_ms(procL, procR);
+                if (active == 1 or active == 2 or active == 4)
+                    procL = lsL.process(procL);
+                if (active == 1 or active == 3 or active == 5)
+                    procR = lsR.process(procR);
+                if (active > 3) undiff_ms(procL, procR);
+                
+                active = *params[AM::param_hs_active];
+                if (active > 3) diff_ms(procL, procR);
+                if (active == 1 or active == 2 or active == 4)
+                    procL = hsL.process(procL);
+                if (active == 1 or active == 3 or active == 5)
+                    procR = hsR.process(procR);
+                if (active > 3) undiff_ms(procL, procR);
+            }
             
             for (int i = 0; i < AM::PeakBands; i++)
             {
@@ -377,8 +383,8 @@ static inline float adjusted_lphp_gain(const float *const *params, int param_act
     return 1;
 }
 
-template<class BaseClass, bool has_lphp>
-bool equalizerNband_audio_module<BaseClass, has_lphp>::get_graph(int index, int subindex, int phase, float *data, int points, cairo_iface *context, int *mode) const
+template<class BaseClass, bool has_lphp, bool has_lshs>
+bool equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::get_graph(int index, int subindex, int phase, float *data, int points, cairo_iface *context, int *mode) const
 {
     if (phase and *params[AM::param_analyzer_active]) {
         bool r = _analyzer.get_graph(subindex, phase, data, points, context, mode);
@@ -389,14 +395,16 @@ bool equalizerNband_audio_module<BaseClass, has_lphp>::get_graph(int index, int 
         }
         return r;
     } else if (phase and !*params[AM::param_analyzer_active]) {
+        last_peak = 0;
         redraw_graph = false;
         return false;
     } else {
-        int max = PeakBands + 2 + (has_lphp ? 2 : 0);
+        int max = PeakBands + (has_lshs ? 2 : 0) + (has_lphp ? 2 : 0);
         
         if (!is_active
         or (subindex and !*params[AM::param_individuals])
         or (subindex > max and *params[AM::param_individuals])) {
+            last_peak = 0;
             redraw_graph = false;
             return false;
         }
@@ -416,9 +424,9 @@ bool equalizerNband_audio_module<BaseClass, has_lphp>::get_graph(int index, int 
         // filters
         while (last_peak < PeakBands and !*params[AM::param_p1_active + last_peak * params_per_band])
             last_peak ++;
-        if (last_peak == PeakBands and !*params[AM::param_ls_active])
+        if (has_lshs and last_peak == PeakBands and !*params[AM::param_ls_active])
             last_peak ++;
-        if (last_peak == PeakBands + 1 and !*params[AM::param_hs_active])
+        if (has_lshs and last_peak == PeakBands + 1 and !*params[AM::param_hs_active])
             last_peak ++;
         if (has_lphp and last_peak == PeakBands + 2 and !*params[AM::param_hp_active])
             last_peak ++;
@@ -443,9 +451,9 @@ bool equalizerNband_audio_module<BaseClass, has_lphp>::get_graph(int index, int 
             double freq = 20.0 * pow (20000.0 / 20.0, i * 1.0 / points);
             if (last_peak < PeakBands) {
                 data[i] = pL[last_peak].freq_gain(freq, (float)srate);
-            } else if (last_peak == PeakBands) {
+            } else if (last_peak == PeakBands and has_lshs) {
                 data[i] = lsL.freq_gain(freq, (float)srate);
-            } else if (last_peak == PeakBands + 1) {
+            } else if (last_peak == PeakBands + 1 and has_lshs) {
                 data[i] = hsL.freq_gain(freq, (float)srate);
             } else if (last_peak == PeakBands + 2 and has_lphp) {
                 data[i] = adjusted_lphp_gain(params, AM::param_hp_active, AM::param_hp_mode, hp[0][0], freq, (float)srate);
@@ -461,8 +469,8 @@ bool equalizerNband_audio_module<BaseClass, has_lphp>::get_graph(int index, int 
         return true;
     }
 }
-template<class BaseClass, bool has_lphp>
-bool equalizerNband_audio_module<BaseClass, has_lphp>::get_layers(int index, int generation, unsigned int &layers) const
+template<class BaseClass, bool has_lphp, bool has_lshs>
+bool equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::get_layers(int index, int generation, unsigned int &layers) const
 {
     redraw_graph = redraw_graph || !generation;
     layers = *params[AM::param_analyzer_active] ? LG_REALTIME_GRAPH : 0;
@@ -471,16 +479,16 @@ bool equalizerNband_audio_module<BaseClass, has_lphp>::get_layers(int index, int
     return redraw_graph or !generation;
 }
 
-template<class BaseClass, bool has_lphp>
-bool equalizerNband_audio_module<BaseClass, has_lphp>::get_gridline(int index, int subindex, int phase, float &pos, bool &vertical, std::string &legend, cairo_iface *context) const
+template<class BaseClass, bool has_lphp, bool has_lshs>
+bool equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::get_gridline(int index, int subindex, int phase, float &pos, bool &vertical, std::string &legend, cairo_iface *context) const
 {
     if (!is_active or phase)
         return false;
     return get_freq_gridline(subindex, pos, vertical, legend, context, true, 128 * *params[AM::param_zoom], 0);
 }
 
-template<class BaseClass, bool has_lphp>
-float equalizerNband_audio_module<BaseClass, has_lphp>::freq_gain(int index, double freq) const
+template<class BaseClass, bool has_lphp, bool has_lshs>
+float equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::freq_gain(int index, double freq) const
 {
     float ret = 1.f;
     if (has_lphp)
@@ -488,22 +496,29 @@ float equalizerNband_audio_module<BaseClass, has_lphp>::freq_gain(int index, dou
         ret *= adjusted_lphp_gain(params, AM::param_hp_active, AM::param_hp_mode, hp[0][0], freq, (float)srate);
         ret *= adjusted_lphp_gain(params, AM::param_lp_active, AM::param_lp_mode, lp[0][0], freq, (float)srate);
     }
-    ret *= (*params[AM::param_ls_active] > 0.f) ? lsL.freq_gain(freq, (float)srate) : 1;
-    ret *= (*params[AM::param_hs_active] > 0.f) ? hsL.freq_gain(freq, (float)srate) : 1;
+    if (has_lshs)
+    {
+        ret *= (*params[AM::param_ls_active] > 0.f) ? lsL.freq_gain(freq, (float)srate) : 1;
+        ret *= (*params[AM::param_hs_active] > 0.f) ? hsL.freq_gain(freq, (float)srate) : 1;
+    }
     for (int i = 0; i < PeakBands; i++)
         ret *= (*params[AM::param_p1_active + i * params_per_band] > 0.f) ? pL[i].freq_gain(freq, (float)srate) : 1;
     return ret;
 }
 
-template<class BaseClass, bool has_lphp>
-inline string equalizerNband_audio_module<BaseClass, has_lphp>::get_crosshair_label(int x, int y, int sx, int sy, float q, int dB, int name, int note, int cents) const
+template<class BaseClass, bool has_lphp, bool has_lshs>
+inline string equalizerNband_audio_module<BaseClass, has_lphp, has_lshs>::get_crosshair_label(int x, int y, int sx, int sy, float q, int dB, int name, int note, int cents) const
 { 
     return frequency_crosshair_label(x, y, sx, sy, q, dB, name, note, cents, 128 * *params[AM::param_zoom], 0);
 }
 
-template class equalizerNband_audio_module<equalizer5band_metadata, false>;
-template class equalizerNband_audio_module<equalizer8band_metadata, true>;
-template class equalizerNband_audio_module<equalizer12band_metadata, true>;
+namespace calf_plugins {
+template class equalizerNband_audio_module<equalizer5band_metadata, false, true>;
+template class equalizerNband_audio_module<equalizer8band_metadata, true, true>;
+template class equalizerNband_audio_module<equalizer12band_metadata, true, true>;
+template class equalizerNband_audio_module<equalizer20band_metadata, true, true>;
+template class equalizerNband_audio_module<equalizer58band_metadata, false, false>;
+}
 
 /**********************************************************************
  * EQUALIZER 30 BAND
@@ -934,6 +949,7 @@ xover_audio_module<XoverBaseClass>::xover_audio_module()
     is_active = false;
     srate = 0;
     redraw_graph = true;
+    buffer = NULL;
     crossover.init(AM::channels, AM::bands, 44100);
 }
 template<class XoverBaseClass>
@@ -981,8 +997,9 @@ void xover_audio_module<XoverBaseClass>::set_sample_rate(uint32_t sr)
 template<class XoverBaseClass>
 void xover_audio_module<XoverBaseClass>::params_changed()
 {
-    int mode = *params[AM::param_mode];
-    crossover.set_mode(mode);
+    mode_set[0] = *params[AM::param_mode];
+    crossover.set_mode(mode_set);
+
     for (int i = 0; i < AM::bands - 1; i++) {
         crossover.set_filter(i,  *params[AM::param_freq0 + i]);
     }
@@ -1064,9 +1081,11 @@ bool xover_audio_module<XoverBaseClass>::get_layers(int index, int generation, u
     return crossover.get_layers(index, generation, layers);
 }
 
+namespace calf_plugins {
 template class xover_audio_module<xover2_metadata>;
 template class xover_audio_module<xover3_metadata>;
 template class xover_audio_module<xover4_metadata>;
+template class xover_audio_module<xover8_metadata>;
 
 
 /**********************************************************************
@@ -1084,6 +1103,7 @@ vocoder_audio_module::vocoder_audio_module()
     bands_old = -1;
     order     = 0;
     order_old = -1;
+    lower_old = upper_old = tilt_old = 0;
     fcoeff    = log10(20.f);
     log2_     = log(2);
     memset(env_mods, 0, 32 * 2 * sizeof(double));
@@ -1107,20 +1127,45 @@ void vocoder_audio_module::params_changed()
     int b = *params[param_bands];
     bands = (b + 2) * 4 + (b > 1 ? (b - 2) * 4 : 0);
     order = std::min(8.f, *params[param_order]);
-    float q = pow(10, (fmodf(std::min(8.999f, *params[param_order]), 1.f) * (7.f / pow(1.3, order))) / 20);
-    if (bands != bands_old or *params[param_order] != order_old) {
+    bool draw = false;
+    for (int i = 0; i < 32; i++) {
+        if (q_old[i] != *params[param_q0 + i * band_params]) {
+            draw = true;
+            q_old[i] = *params[param_q0 + i * band_params];
+        }
+    }
+    if (draw or bands != bands_old or *params[param_order] != order_old
+    or *params[param_hiq] != hiq_old or *params[param_lower] != lower_old
+    or *params[param_upper] != upper_old or *params[param_tilt] != tilt_old) {
+        float q = pow(10, (fmodf(std::min(8.999f, *params[param_order]), 1.f) * (7.f / pow(1.3, order))) / 20);
+        q += *params[param_hiq];
         bands_old = bands;
         order_old = *params[param_order];
+        hiq_old = *params[param_hiq];
+        lower_old = *params[param_lower];
+        upper_old = *params[param_upper];
+        tilt_old = *params[param_tilt];
+        float to = *params[param_tilt] < 0 ? *params[param_lower] : *params[param_upper];
+        float from = *params[param_tilt] < 0 ? *params[param_upper] : *params[param_lower];
+        float tilt = fabs(*params[param_tilt]); 
+        float freq = from;
         for (int i = 0; i < bands; i++) {
-            // set all actually used filters
-            detector[0][0][i].set_bp_rbj(pow(10, fcoeff + (0.5f + (float)i) * 3.f / (float)bands), q, (double)srate);
+            int _i = *params[param_tilt] < 0 ? bands - i - 1 : i;
+            float _freq = log10(freq);
+            float _q = q * *params[param_q0 + _i * band_params];
+            //detector[0][0][i].set_bp_rbj(pow(10, fcoeff + (0.5f + (float)i) * 3.f / (float)bands), _q, (double)srate);
+            float step = (log10(to) - _freq) / (bands - i) * (1 + tilt);
+            float f = pow(10, _freq + (0.5 * step));
+            bandfreq[_i] = f;
+            detector[0][0][_i].set_bp_rbj(f, _q, (double)srate);
             for (int j = 0; j < order; j++) {
                 if (j)
-                    detector[0][j][i].copy_coeffs(detector[0][0][i]);
-                detector[1][j][i].copy_coeffs(detector[0][0][i]);
-                modulator[0][j][i].copy_coeffs(detector[0][0][i]);
-                modulator[1][j][i].copy_coeffs(detector[0][0][i]);
+                    detector[0][j][_i].copy_coeffs(detector[0][0][_i]);
+                detector[1][j][_i].copy_coeffs(detector[0][0][_i]);
+                modulator[0][j][_i].copy_coeffs(detector[0][0][_i]);
+                modulator[1][j][_i].copy_coeffs(detector[0][0][_i]);
             }
+            freq = pow(10, _freq + step);
         }
         redraw_graph = true;
     }
@@ -1221,8 +1266,8 @@ uint32_t vocoder_audio_module::process(uint32_t offset, uint32_t numsamples, uin
                         led[i] = env_mods[0][i] + env_mods[1][i];
                     
                 // advance envelopes
-                env_mods[0][i] = (fabs(mL_) > env_mods[0][i] ? attack : release) * (env_mods[0][i] - fabs(mL_)) + fabs(mL_);
-                env_mods[1][i] = (fabs(mR_) > env_mods[1][i] ? attack : release) * (env_mods[1][i] - fabs(mR_)) + fabs(mR_);
+                env_mods[0][i] = _sanitize((fabs(mL_) > env_mods[0][i] ? attack : release) * (env_mods[0][i] - fabs(mL_)) + fabs(mL_));
+                env_mods[1][i] = _sanitize((fabs(mR_) > env_mods[1][i] ? attack : release) * (env_mods[1][i] - fabs(mR_)) + fabs(mR_));
             }
             
             outL = pL;
@@ -1314,7 +1359,6 @@ bool vocoder_audio_module::get_graph(int index, int subindex, int phase, float *
             context->set_source_rgba(0,0,0,0.15);
         context->set_line_width(0.99);
         int drawn = 0;
-        double fq = pow(10, fcoeff + (0.5f + (float)subindex) * 3.f / (float)bands);
         for (int i = 0; i < points; i++) {
             double freq = 20.0 * pow (20000.0 / 20.0, i * 1.0 / points);
             float level = 1;
@@ -1322,7 +1366,7 @@ bool vocoder_audio_module::get_graph(int index, int subindex, int phase, float *
                 level *= detector[0][0][subindex].freq_gain(freq, srate);
             level *= *params[param_volume0 + subindex * band_params];
             data[i] = dB_grid(level, 256, 0.4);
-            if (!drawn and freq > fq) {
+            if (!drawn and freq > bandfreq[subindex]) {
                 drawn = 1;
                 char str[32];
                 sprintf(str, "%d", subindex + 1);

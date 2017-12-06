@@ -118,10 +118,6 @@ vintage_delay_audio_module::vintage_delay_audio_module()
     }
     _tap_avg = 0;
     _tap_last = 0;
-    
-    int meter[] = {param_meter_inL, param_meter_inR, param_meter_outL, param_meter_outR};
-    int clip[] = {param_clip_inL, param_clip_inR, param_clip_outL, param_clip_outR};
-    meters.init(params, meter, clip, 4, srate);
 }
 
 char *vintage_delay_audio_module::configure(const char *key, const char *value)
@@ -136,7 +132,7 @@ char *vintage_delay_audio_module::configure(const char *key, const char *value)
         return NULL;
     }
     else
-    return "Unsupported key";
+    return strdup("Unsupported key");
 }
 
 void vintage_delay_audio_module::params_changed()
@@ -145,14 +141,15 @@ void vintage_delay_audio_module::params_changed()
     bpm = convert_periodic(*params[param_bpm + (int)((periodic_unit)*params[param_timing])],
                                   (periodic_unit)*params[param_timing], UNIT_BPM);
     
-    switch ((int)*params[par_frag]) {
-        case FRAG_PERIODIC:
+    // not implemented by now
+    //switch ((int)*params[par_frag]) {
+        //case FRAG_PERIODIC:
             
-            break;
-        case FRAG_PATTERN:
-            int amnt = *params[par_pbeats] * *params[par_pfrag];
-            break;
-    }
+            //break;
+        //case FRAG_PATTERN:
+            //int amnt = *params[par_pbeats] * *params[par_pfrag];
+            //break;
+    //}
     
     float unit = 60.0 * srate / (bpm * *params[par_divide]);
     deltime_l = dsp::fastf2i_drm(unit * *params[par_time_l]);
@@ -212,6 +209,10 @@ void vintage_delay_audio_module::set_sample_rate(uint32_t sr)
     old_medium = -1;
     amt_left.set_sample_rate(sr); amt_right.set_sample_rate(sr);
     fb_left.set_sample_rate(sr); fb_right.set_sample_rate(sr);
+
+    int meter[] = {param_meter_inL, param_meter_inR, param_meter_outL, param_meter_outR};
+    int clip[] = {param_clip_inL, param_clip_inR, param_clip_outL, param_clip_outR};
+    meters.init(params, meter, clip, 4, srate);
 }
 
 void vintage_delay_audio_module::calc_filters()
@@ -435,9 +436,10 @@ uint32_t comp_delay_audio_module::process(uint32_t offset, uint32_t numsamples, 
         while(offset < end) {
             outs[0][offset] = ins[0][offset];
             buffer[w_ptr]   = ins[0][offset];
-            if (stereo)
+            if (stereo) {
                 outs[1][offset]   = ins[1][offset];
                 buffer[w_ptr + 1] = ins[1][offset];
+            }
             w_ptr = (w_ptr + 2) & b_mask;
             meters.process(values);
             ++offset;
@@ -768,6 +770,6 @@ uint32_t reverse_delay_audio_module::process(uint32_t offset, uint32_t numsample
         float values[] = {inL, inR, outL, outR};
         meters.process(values);
     }
-
+    meters.fall(numsamples);
     return ostate;
 }

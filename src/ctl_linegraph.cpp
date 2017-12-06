@@ -378,8 +378,8 @@ void calf_line_graph_draw_freqhandles(CalfLineGraph* lg, cairo_t* c)
     if (lg->freqhandles > 0) {
         cairo_set_source_rgba(c, 0.0, 0.0, 0.0, 1.0);
         cairo_set_line_width(c, 1.0);
-        string tmp;
         for (int i = 0; i < lg->freqhandles; i++) {
+            string tmp;
             FreqHandle *handle = &lg->freq_handles[i];
             if(!handle->is_active() or handle->value_x < 0.0 or handle->value_x > 1.0)
                 continue;
@@ -464,14 +464,20 @@ void calf_line_graph_draw_freqhandles(CalfLineGraph* lg, cairo_t* c)
                 dB = 0;
             }
             // label
-            if (lg->handle_hovered == i)
+            if (lg->handle_hovered == i) {
                 tmp = calf_plugins::frequency_crosshair_label(val_x, val_y, sx, sy, val_z, dB, 1, 1, 1, lg->zoom * 128, 0);
-            else
+            } else if (lg->drawl) {
                 tmp = calf_plugins::frequency_crosshair_label(val_x, val_y, sx, sy, 0, dB, 0, 0, 0, lg->zoom * 128, 0);
-            if (handle->label && strlen(handle->label))
-                sprintf(label, "%s\n%s", handle->label, tmp.c_str());
-            else
+            }
+
+            if (lg->drawl || lg->handle_hovered == i) {
+                if (handle->label && strlen(handle->label))
+                    sprintf(label, "%s\n%s", handle->label, tmp.c_str());
+                else
+                    strcpy(label, tmp.c_str());
+            } else {
                 strcpy(label, tmp.c_str());
+            }
             
             if (handle->dimensions == 1) {
                 calf_line_graph_draw_label(lg, c, label, val_x, oy + 2, lg->handle_hovered == i ? 0.8 : 0.5, 0, 0, 0);
@@ -667,8 +673,8 @@ calf_line_graph_expose (GtkWidget *widget, GdkEventExpose *event)
         lg->pad_y = widget->style->ythickness;
         lg->x = widget->allocation.x;
         lg->y = widget->allocation.y;
-        float radius, bevel;
-        gtk_widget_style_get(widget, "border-radius", &radius, "bevel",  &bevel, NULL);
+        float radius, bevel, shadow, lights, dull;
+        gtk_widget_style_get(widget, "border-radius", &radius, "bevel",  &bevel, "shadow", &shadow, "lights", &lights, "dull", &dull, NULL);
     
         if (lg->debug) printf("recreation...\n");
         calf_line_graph_create_surfaces(widget);
@@ -677,7 +683,7 @@ calf_line_graph_expose (GtkWidget *widget, GdkEventExpose *event)
         // draw the yellowish lighting on the background surface
         cairo_t *bg = cairo_create(lg->background_surface);
         if (lg->debug) printf("(draw background)\n");
-        display_background(widget, bg, 0, 0, lg->size_x, lg->size_y, lg->pad_x, lg->pad_y, radius, bevel);
+        display_background(widget, bg, 0, 0, lg->size_x, lg->size_y, lg->pad_x, lg->pad_y, radius, bevel, 1, shadow, lights, dull);
         cairo_destroy(bg);
     }
     
@@ -1331,7 +1337,10 @@ calf_line_graph_leave (GtkWidget *widget, GdkEventCrossing *event)
         calf_line_graph_expose_request(widget, true);
     lg->mouse_x = -1;
     lg->mouse_y = -1;
-
+    gdk_window_set_cursor(widget->window, lg->arrow_cursor);
+    lg->handle_hovered = -1;
+    lg->handle_redraw = 1;
+    calf_line_graph_expose_request(widget, true);
     return TRUE;
 }
 
@@ -1411,6 +1420,15 @@ calf_line_graph_class_init (CalfLineGraphClass *klass)
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("bevel", "Bevel", "Bevel the object",
         -2, 2, 0.2, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("shadow", "Shadow", "Draw shadows inside",
+        0, 16, 4, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("lights", "Lights", "Draw lights inside",
+        0, 1, 1, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("dull", "Dull", "Draw dull inside",
+        0, 1, 0.25, GParamFlags(G_PARAM_READWRITE)));
         
     g_signal_new("freqhandle-changed",
          G_TYPE_OBJECT, G_SIGNAL_RUN_FIRST,
@@ -1444,6 +1462,8 @@ calf_line_graph_init (CalfLineGraph *lg)
     lg->force_redraw         = false;
     lg->zoom                 = 1;
     lg->param_zoom           = -1;
+    lg->drawl                = 1;
+    lg->param_drawl          = -1;
     lg->offset               = 0;
     lg->param_offset         = -1;
     lg->recreate_surfaces    = 1;

@@ -180,7 +180,6 @@ uint32_t limiter_audio_module::process(uint32_t offset, uint32_t numsamples, uin
 multibandlimiter_audio_module::multibandlimiter_audio_module()
 {
     srate               = 0;
-    _mode               = 0;
     over                = 1;
     buffer_size         = 0;
     overall_buffer_size = 0;
@@ -193,6 +192,7 @@ multibandlimiter_audio_module::multibandlimiter_audio_module()
     _sanitize           = false;
     is_active           = false;
     cnt = 0;
+    buffer = NULL;
     
     for(int i = 0; i < strips; i ++) {
         weight_old[i] = -1.f;
@@ -240,13 +240,10 @@ void multibandlimiter_audio_module::params_changed()
             *params[param_solo1] > 0.f ||
             *params[param_solo2] > 0.f ||
             *params[param_solo3] > 0.f) ? false : true;
-
-    int m = *params[param_mode];
-    if (m != _mode) {
-        _mode = *params[param_mode];
-    }
     
-    crossover.set_mode(_mode + 1);
+    mode_set[0] = *params[param_mode] + 1;
+    crossover.set_mode(mode_set);
+
     crossover.set_filter(0, *params[param_freq0]);
     crossover.set_filter(1, *params[param_freq1]);
     crossover.set_filter(2, *params[param_freq2]);
@@ -429,7 +426,7 @@ uint32_t multibandlimiter_audio_module::process(uint32_t offset, uint32_t numsam
                 }
                 
                 // write multiband coefficient to buffer
-                buffer[pos] = std::min(*params[param_limit] / std::max(fabs(tmpL), fabs(tmpR)), 1.0);
+                buffer[pos] = std::min((float)(*params[param_limit] / std::max(fabs(tmpL), fabs(tmpR))), 1.0f);
                 
                 // step forward in multiband buffer
                 pos = (pos + channels) % buffer_size;
@@ -572,7 +569,6 @@ bool multibandlimiter_audio_module::get_layers(int index, int generation, unsign
 sidechainlimiter_audio_module::sidechainlimiter_audio_module()
 {
     srate               = 0;
-    _mode               = 0;
     over                = 1;
     buffer_size         = 0;
     overall_buffer_size = 0;
@@ -585,6 +581,7 @@ sidechainlimiter_audio_module::sidechainlimiter_audio_module()
     _sanitize           = false;
     is_active           = false;
     cnt = 0;
+    buffer = NULL;
     
     for(int i = 0; i < strips; i ++) {
         weight_old[i] = -1.f;
@@ -635,12 +632,9 @@ void sidechainlimiter_audio_module::params_changed()
             *params[param_solo3] > 0.f ||
             *params[param_solo_sc] > 0.f) ? false : true;
 
-    int m = *params[param_mode];
-    if (m != _mode) {
-        _mode = *params[param_mode];
-    }
-    
-    crossover.set_mode(_mode + 1);
+    mode_set[0] = *params[param_mode] + 1;
+    crossover.set_mode(mode_set);
+
     crossover.set_filter(0, *params[param_freq0]);
     crossover.set_filter(1, *params[param_freq1]);
     crossover.set_filter(2, *params[param_freq2]);
@@ -811,7 +805,7 @@ uint32_t sidechainlimiter_audio_module::process(uint32_t offset, uint32_t numsam
                 }
                 
                 // write multiband coefficient to buffer
-                buffer[pos] = std::min(*params[param_limit] / std::max(fabs(tmpL), fabs(tmpR)), 1.0);
+                buffer[pos] = std::min((float)(*params[param_limit] / std::max(fabs(tmpL), fabs(tmpR))), 1.0f);
                 
                 // step forward in multiband buffer
                 pos = (pos + channels) % buffer_size;

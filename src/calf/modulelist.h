@@ -15,6 +15,7 @@
     // Simulator
     PER_MODULE_ITEM(rotary_speaker,      false, "rotaryspeaker")
     PER_MODULE_ITEM(tapesimulator,       false, "tapesimulator")
+    PER_MODULE_ITEM(vinyl,               false, "vinyl")
     
     // Reverb
     PER_MODULE_ITEM(reverb,              false, "reverb")
@@ -36,6 +37,12 @@
     PER_MODULE_ITEM(gate,                false, "gate")
     PER_MODULE_ITEM(sidechaingate,       false, "sidechaingate")
     PER_MODULE_ITEM(multibandgate,       false, "multibandgate")
+    PER_MODULE_ITEM(multibandsoft6band,  false, "multibandsoft6band")
+    PER_MODULE_ITEM(multibandsoft12band, false, "multibandsoft12band")
+    PER_MODULE_ITEM(scmultibandsoft6band,false, "scmultibandsoft6band")
+    PER_MODULE_ITEM(elasticeq,           false, "elasticeq")
+    PER_MODULE_ITEM(mstripelasticeq,     false, "mstripelasticeq")
+    PER_MODULE_ITEM(scmstripelasticeq,   false, "scmstripelasticeq")
     
     // Limiter
     PER_MODULE_ITEM(limiter,             false, "limiter")
@@ -56,7 +63,9 @@
     PER_MODULE_ITEM(equalizer5band,      false, "eq5")
     PER_MODULE_ITEM(equalizer8band,      false, "eq8")
     PER_MODULE_ITEM(equalizer12band,     false, "eq12")
+    PER_MODULE_ITEM(equalizer20band,     false, "eq20")
     PER_MODULE_ITEM(equalizer30band,     false, "eq30")
+    PER_MODULE_ITEM(equalizer58band,     false, "eq58")
     
     // Distrotion
     PER_MODULE_ITEM(saturator,           false, "saturator")
@@ -69,12 +78,15 @@
     // Spatial
     PER_MODULE_ITEM(stereo,              false, "stereo")
     PER_MODULE_ITEM(haas_enhancer,       false, "haasenhancer")
+    PER_MODULE_ITEM(multibandenhancer,   false, "multibandenhancer")
+    PER_MODULE_ITEM(multispread,         false, "multispread")
     
     // Utility
     PER_MODULE_ITEM(mono,                false, "mono")
     PER_MODULE_ITEM(xover2,              false, "xover2")
     PER_MODULE_ITEM(xover3,              false, "xover3")
     PER_MODULE_ITEM(xover4,              false, "xover4")
+    PER_MODULE_ITEM(xover8,              false, "xover8")
     
     // Analyser
     PER_MODULE_ITEM(analyzer,            false, "analyzer")

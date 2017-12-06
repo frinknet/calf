@@ -28,32 +28,35 @@ using namespace dsp;
 ///////////////////////////////////////// phase graph ///////////////////////////////////////////////
 
 static void
-calf_phase_graph_draw_background(GtkWidget *widget, cairo_t *ctx, int sx, int sy, int ox, int oy, float radius, float bevel )
+calf_phase_graph_draw_background(GtkWidget *widget, cairo_t *ctx, int sx, int sy, int ox, int oy, float radius, float bevel, float brightness, float shadow, float lights, float dull )
 {
     int cx = ox + sx / 2;
     int cy = oy + sy / 2;
     
-    display_background(widget, ctx, 0, 0, sx, sy, ox, oy, radius, bevel);
+    display_background(widget, ctx, 0, 0, sx, sy, ox, oy, radius, bevel, brightness, shadow, lights, dull);
     cairo_set_source_rgb(ctx, 0.35, 0.4, 0.2);
-    cairo_select_font_face(ctx, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-    cairo_set_font_size(ctx, 9);
-    cairo_text_extents_t te;
     
-    cairo_text_extents (ctx, "M", &te);
-    cairo_move_to (ctx, cx + 5, oy + 12);
-    cairo_show_text (ctx, "M");
-    
-    cairo_text_extents (ctx, "S", &te);
-    cairo_move_to (ctx, ox + 5, cy - 5);
-    cairo_show_text (ctx, "S");
-    
-    cairo_text_extents (ctx, "L", &te);
-    cairo_move_to (ctx, ox + 18, oy + 12);
-    cairo_show_text (ctx, "L");
-    
-    cairo_text_extents (ctx, "R", &te);
-    cairo_move_to (ctx, ox + sx - 22, oy + 12);
-    cairo_show_text (ctx, "R");
+    if (sx > 128 and sy > 128) {
+        cairo_select_font_face(ctx, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_set_font_size(ctx, 9);
+        cairo_text_extents_t te;
+        
+        cairo_text_extents (ctx, "M", &te);
+        cairo_move_to (ctx, cx + 5, oy + 12);
+        cairo_show_text (ctx, "M");
+        
+        cairo_text_extents (ctx, "S", &te);
+        cairo_move_to (ctx, ox + 5, cy - 5);
+        cairo_show_text (ctx, "S");
+        
+        cairo_text_extents (ctx, "L", &te);
+        cairo_move_to (ctx, ox + 18, oy + 12);
+        cairo_show_text (ctx, "L");
+        
+        cairo_text_extents (ctx, "R", &te);
+        cairo_move_to (ctx, ox + sx - 22, oy + 12);
+        cairo_show_text (ctx, "R");
+    }
     
     cairo_set_line_width(ctx, 1);
     
@@ -112,8 +115,8 @@ calf_phase_graph_expose (GtkWidget *widget, GdkEventExpose *event)
     int cx = ox + sx / 2;
     int cy = oy + sy / 2;
     
-    float radius, bevel;
-    gtk_widget_style_get(widget, "border-radius", &radius, "bevel",  &bevel, NULL);
+    float radius, bevel, shadow, lights, dull;
+    gtk_widget_style_get(widget, "border-radius", &radius, "bevel",  &bevel, "shadow", &shadow, "lights", &lights, "dull", &dull, NULL);
     
     // some values as pointers for the audio plug-in call
     float * phase_buffer = 0;
@@ -137,7 +140,7 @@ calf_phase_graph_expose (GtkWidget *widget, GdkEventExpose *event)
         
         // ...and draw some bling bling onto it...
         ctx_back = cairo_create(pg->background);
-        calf_phase_graph_draw_background(widget, ctx_back, sx, sy, ox, oy, radius, bevel);
+        calf_phase_graph_draw_background(widget, ctx_back, sx, sy, ox, oy, radius, bevel, 1, shadow, lights, dull);
         // ...and copy it to the cache
         ctx_cache = cairo_create(pg->cache); 
         calf_phase_graph_copy_surface(ctx_cache, pg->background, 0, 0, 1);
@@ -146,7 +149,8 @@ calf_phase_graph_expose (GtkWidget *widget, GdkEventExpose *event)
         ctx_cache = cairo_create(pg->cache); 
     }
     
-    pg->source->get_phase_graph(&phase_buffer, &length, &mode, &use_fade,
+    pg->source->get_phase_graph(pg->source_id, &phase_buffer,
+                                &length, &mode, &use_fade,
                                 &fade, &accuracy, &display);
     
     // process some values set by the plug-in
@@ -277,6 +281,15 @@ calf_phase_graph_class_init (CalfPhaseGraphClass *klass)
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("bevel", "Bevel", "Bevel the object",
         -2, 2, 0.2, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("shadow", "Shadow", "Draw shadows inside",
+        0, 16, 4, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("lights", "Lights", "Draw lights inside",
+        0, 1, 1, GParamFlags(G_PARAM_READWRITE)));
+    gtk_widget_class_install_style_property(
+        widget_class, g_param_spec_float("dull", "Dull", "Draw dull inside",
+        0, 1, 0.25, GParamFlags(G_PARAM_READWRITE)));
 }
 
 static void

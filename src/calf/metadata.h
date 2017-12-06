@@ -28,6 +28,7 @@
 #define MONO_VU_METER_PARAMS param_meter_in, param_meter_out, param_clip_in, param_clip_out
 #define STEREO_VU_METER_PARAMS param_meter_inL, param_meter_inR, param_meter_outL, param_meter_outR, param_clip_inL, param_clip_inR, param_clip_outL, param_clip_outR
 #define PERIODICAL_PARAMS param_timing, param_bpm, param_ms, param_hz, param_bpm_host
+#define STEREO_VU_METER_IN_PARAMS param_meter_inL, param_meter_inR, param_clip_inL, param_clip_inR
 
 namespace calf_plugins {
 
@@ -36,9 +37,9 @@ struct flanger_metadata: public plugin_metadata<flanger_metadata>
 public:
     enum { par_delay, par_depth, par_rate, par_fb, par_stereo, par_reset, par_amount, par_dryamount,
         param_on, param_level_in, param_level_out,
-        STEREO_VU_METER_PARAMS,
+        STEREO_VU_METER_PARAMS, param_lfo,
         param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("flanger", "flanger", "Flanger")
 };
 
@@ -46,9 +47,9 @@ struct phaser_metadata: public plugin_metadata<phaser_metadata>
 {
     enum { par_freq, par_depth, par_rate, par_fb, par_stages, par_stereo, par_reset, par_amount, par_dryamount,
         param_on, param_level_in, param_level_out,
-        STEREO_VU_METER_PARAMS,
+        STEREO_VU_METER_PARAMS, param_lfo,
         param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("phaser", "phaser", "Phaser")
 };
 
@@ -58,7 +59,7 @@ struct filter_metadata: public plugin_metadata<filter_metadata>
         param_bypass, param_level_in, param_level_out,
         STEREO_VU_METER_PARAMS,
         param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, require_midi = false, support_midi = false };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, require_midi = false, support_midi = false, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("filter", "filter", "Filter")
     /// do not export mode and inertia as CVs, as those are settings and not parameters
     bool is_cv(int param_no) const { return param_no != par_mode && param_no != par_inertia; }
@@ -71,7 +72,7 @@ struct filterclavier_metadata: public plugin_metadata<filterclavier_metadata>
         param_bypass, param_level_in, param_level_out,
         STEREO_VU_METER_PARAMS,
         param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, require_midi = true, support_midi = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, require_midi = true, support_midi = true, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("filterclavier", "filterclavier", "Filterclavier")
     /// do not export mode and inertia as CVs, as those are settings and not parameters
     bool is_cv(int param_no) const { return param_no != par_mode && param_no != par_inertia; }
@@ -80,7 +81,7 @@ struct filterclavier_metadata: public plugin_metadata<filterclavier_metadata>
 /// Envelope Filter - metadata
 struct envelopefilter_metadata: public plugin_metadata<envelopefilter_metadata>
 {
-    enum { in_count = 4, out_count = 2, ins_optional = 2, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 4, out_count = 2, ins_optional = 2, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_mix, param_q, param_mode,
@@ -93,11 +94,12 @@ struct envelopefilter_metadata: public plugin_metadata<envelopefilter_metadata>
 
 struct reverb_metadata: public plugin_metadata<reverb_metadata>
 {
-    enum { par_decay, par_hfdamp, par_roomsize, par_diffusion, par_amount, par_dry, par_predelay, par_basscut, par_treblecut, par_on,
+    enum { param_meter_inL, param_meter_inR, param_clip_outL, 
+           par_decay, par_hfdamp, par_roomsize, par_diffusion, par_amount, par_dry, par_predelay, par_basscut, par_treblecut, par_on,
            param_level_in, param_level_out,
-           STEREO_VU_METER_PARAMS,
+           param_meter_outL, param_meter_outR, param_clip_inL, param_clip_inR, param_clip_outR,
            param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("reverb", "reverb", "Reverb")
 };
 
@@ -110,7 +112,7 @@ struct vintage_delay_metadata: public plugin_metadata<vintage_delay_metadata>
             par_width, par_frag, par_pbeats, par_pfrag,
             PERIODICAL_PARAMS,
             param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, support_midi = false, require_midi = false };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, support_midi = false, require_midi = false, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("vintagedelay", "vintagedelay", "Vintage Delay")
 };
 
@@ -119,7 +121,7 @@ struct comp_delay_metadata: public plugin_metadata<comp_delay_metadata>
     enum { par_distance_mm, par_distance_cm, par_distance_m, par_dry, par_wet, param_temp,
         param_bypass, param_level_in, param_level_out,
         STEREO_VU_METER_PARAMS, param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, rt_capable = true, support_midi = false, require_midi = false };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, rt_capable = true, support_midi = false, require_midi = false, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("compdelay", "compdelay", "Compensation Delay Line")
 };
 
@@ -135,7 +137,7 @@ struct haas_enhancer_metadata: public plugin_metadata<haas_enhancer_metadata>
         par_s_delay1, par_s_balance1, par_s_gain1, par_s_phase1,
         param_count
     };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, support_midi = false, require_midi = false };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, support_midi = false, require_midi = false, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("haasenhancer", "haasenhancer", "Haas Stereo Enhancer")
 };
 
@@ -145,7 +147,7 @@ struct reverse_delay_metadata: public plugin_metadata<reverse_delay_metadata>
         param_bypass, param_level_in, param_level_out,
         STEREO_VU_METER_PARAMS,
         param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, support_midi = false, require_midi = false };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, support_midi = false, require_midi = false, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("reversedelay", "reversedelay", "Reverse Delay")
 };
 
@@ -156,7 +158,7 @@ public:
         param_bypass, param_level_in, param_level_out,
         STEREO_VU_METER_PARAMS,
         param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = false, rt_capable = true, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("rotary_speaker", "rotaryspeaker", "Rotary Speaker")
 };
 
@@ -166,9 +168,9 @@ struct multichorus_metadata: public plugin_metadata<multichorus_metadata>
 public:
     enum { par_delay, par_depth, par_rate, par_stereo, par_voices, par_vphase, par_amount, par_dryamount, par_freq, par_freq2, par_q, par_overlap,
         param_on, param_level_in, param_level_out,
-        STEREO_VU_METER_PARAMS,
+        STEREO_VU_METER_PARAMS, param_lfo,
         param_count };
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, support_midi = false, require_midi = false };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, rt_capable = true, support_midi = false, require_midi = false, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("multichorus", "multichorus", "Multi Chorus")
 };
 
@@ -195,7 +197,7 @@ struct monosynth_metadata: public plugin_metadata<monosynth_metadata>
         par_o2unison, par_o2unisonfrq,
         par_osc1xpose,
         param_count };
-    enum { in_count = 0, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = true, rt_capable = true };
+    enum { in_count = 0, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = true, rt_capable = true, require_instance_access = false };
     enum { step_size = 64, step_shift = 6 };
     enum { mod_matrix_slots = 10 };
     enum {
@@ -238,7 +240,7 @@ struct monosynth_metadata: public plugin_metadata<monosynth_metadata>
 /// Added some meters and stripped the weighting part
 struct compressor_metadata: public plugin_metadata<compressor_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, MONO_VU_METER_PARAMS,
            param_threshold, param_ratio, param_attack, param_release, param_makeup, param_knee, param_detection, param_stereo_link, param_compression, param_mix,
            param_count };
@@ -249,7 +251,7 @@ struct compressor_metadata: public plugin_metadata<compressor_metadata>
 /// Added some meters and stripped the weighting part
 struct monocompressor_metadata: public plugin_metadata<monocompressor_metadata>
 {
-    enum { in_count = 1, out_count = 1, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 1, out_count = 1, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, MONO_VU_METER_PARAMS,
            param_threshold, param_ratio, param_attack, param_release, param_makeup, param_knee, param_compression, param_mix,
            param_count };
@@ -259,7 +261,7 @@ struct monocompressor_metadata: public plugin_metadata<monocompressor_metadata>
 /// Markus's sidechain compressor - metadata
 struct sidechaincompressor_metadata: public plugin_metadata<sidechaincompressor_metadata>
 {
-    enum { in_count = 4, out_count = 2, ins_optional = 2, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 4, out_count = 2, ins_optional = 2, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, MONO_VU_METER_PARAMS,
            param_threshold, param_ratio, param_attack, param_release, param_makeup, param_knee, param_detection, param_stereo_link, param_compression,
            param_sc_mode, param_f1_freq, param_f2_freq, param_f1_level, param_f2_level,
@@ -270,7 +272,7 @@ struct sidechaincompressor_metadata: public plugin_metadata<sidechaincompressor_
 /// Markus's multibandcompressor - metadata
 struct multibandcompressor_metadata: public plugin_metadata<multibandcompressor_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_freq0, param_freq1, param_freq2,
@@ -291,7 +293,7 @@ struct multibandcompressor_metadata: public plugin_metadata<multibandcompressor_
 /// Markus's deesser - metadata
 struct deesser_metadata: public plugin_metadata<deesser_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_detected, param_compression, param_detected_led, param_clip_out,
            param_detection, param_mode,
            param_threshold, param_ratio, param_laxity, param_makeup,
@@ -304,7 +306,7 @@ struct deesser_metadata: public plugin_metadata<deesser_metadata>
 /// Added some meters and stripped the weighting part
 struct gate_metadata: public plugin_metadata<gate_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, MONO_VU_METER_PARAMS,
            param_range, param_threshold, param_ratio, param_attack, param_release, param_makeup, param_knee, param_detection, param_stereo_link, param_gating,
            param_count };
@@ -314,7 +316,7 @@ struct gate_metadata: public plugin_metadata<gate_metadata>
 /// Markus's sidechain gate - metadata
 struct sidechaingate_metadata: public plugin_metadata<sidechaingate_metadata>
 {
-    enum { in_count = 4, out_count = 2, ins_optional = 2, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 4, out_count = 2, ins_optional = 2, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, MONO_VU_METER_PARAMS,
            param_range, param_threshold, param_ratio, param_attack, param_release, param_makeup, param_knee, param_detection, param_stereo_link, param_gating,
            param_sc_mode, param_f1_freq, param_f2_freq, param_f1_level, param_f2_level,
@@ -325,7 +327,7 @@ struct sidechaingate_metadata: public plugin_metadata<sidechaingate_metadata>
 /// Markus's multiband gate - metadata
 struct multibandgate_metadata: public plugin_metadata<multibandgate_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_freq0, param_freq1, param_freq2,
@@ -343,10 +345,266 @@ struct multibandgate_metadata: public plugin_metadata<multibandgate_metadata>
     PLUGIN_NAME_ID_LABEL("multibandgate", "multibandgate", "Multiband Gate")
 };
 
+/// Adriano's multiband soft 12 band- metadata
+struct multibandsoft12band_metadata: public plugin_metadata<multibandsoft12band_metadata>
+{
+    enum { in_count = 2, out_count = 24, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { param_level_in,
+           STEREO_VU_METER_IN_PARAMS,
+           param_freq0, param_freq1, param_freq2, param_freq3, param_freq4, param_freq5, param_freq6, param_freq7, param_freq8, param_freq9, param_freq10,
+           param_fast,
+           param_range0, param_threshold0, param_ratio0, param_attack0, param_release0, param_makeup0, param_knee0, param_delay0,
+           param_detection0, param_stereo_link0, param_strip_mode0, param_gating0, param_output0, param_mode0, param_solo0, param_bypass0,
+           param_drive0, param_blend0,
+           param_range1, param_threshold1, param_ratio1, param_attack1, param_release1, param_makeup1, param_knee1, param_delay1,
+           param_detection1, param_stereo_link1, param_strip_mode1, param_gating1, param_output1, param_mode1, param_solo1, param_bypass1,
+           param_drive1, param_blend1,
+           param_range2, param_threshold2, param_ratio2, param_attack2, param_release2, param_makeup2, param_knee2, param_delay2,
+           param_detection2, param_stereo_link2, param_strip_mode2, param_gating2, param_output2, param_mode2, param_solo2, param_bypass2,
+           param_drive2, param_blend2,
+           param_range3, param_threshold3, param_ratio3, param_attack3, param_release3, param_makeup3, param_knee3, param_delay3,
+           param_detection3, param_stereo_link3, param_strip_mode3, param_gating3, param_output3, param_mode3, param_solo3, param_bypass3,
+           param_drive3, param_blend3,
+           param_range4, param_threshold4, param_ratio4, param_attack4, param_release4, param_makeup4, param_knee4, param_delay4,
+           param_detection4, param_stereo_link4, param_strip_mode4, param_gating4, param_output4, param_mode4, param_solo4, param_bypass4,
+           param_drive4, param_blend4,
+           param_range5, param_threshold5, param_ratio5, param_attack5, param_release5, param_makeup5, param_knee5, param_delay5,
+           param_detection5, param_stereo_link5, param_strip_mode5, param_gating5, param_output5, param_mode5, param_solo5, param_bypass5,
+           param_drive5, param_blend5,
+           param_range6, param_threshold6, param_ratio6, param_attack6, param_release6, param_makeup6, param_knee6, param_delay6,
+           param_detection6, param_stereo_link6, param_strip_mode6, param_gating6, param_output6, param_mode6, param_solo6, param_bypass6,
+           param_drive6, param_blend6,
+           param_range7, param_threshold7, param_ratio7, param_attack7, param_release7, param_makeup7, param_knee7, param_delay7,
+           param_detection7, param_stereo_link7, param_strip_mode7, param_gating7, param_output7, param_mode7, param_solo7, param_bypass7,
+           param_drive7, param_blend7,
+           param_range8, param_threshold8, param_ratio8, param_attack8, param_release8, param_makeup8, param_knee8, param_delay8,
+           param_detection8, param_stereo_link8, param_strip_mode8, param_gating8, param_output8, param_mode8, param_solo8, param_bypass8,
+           param_drive8, param_blend8,
+           param_range9, param_threshold9, param_ratio9, param_attack9, param_release9, param_makeup9, param_knee9, param_delay9,
+           param_detection9, param_stereo_link9, param_strip_mode9, param_gating9, param_output9, param_mode9, param_solo9, param_bypass9,
+           param_drive9, param_blend9,
+           param_range10, param_threshold10, param_ratio10, param_attack10, param_release10, param_makeup10, param_knee10, param_delay10,
+           param_detection10, param_stereo_link10, param_strip_mode10, param_gating10, param_output10, param_mode10, param_solo10, param_bypass10,
+           param_drive10, param_blend10,
+           param_range11, param_threshold11, param_ratio11, param_attack11, param_release11, param_makeup11, param_knee11, param_delay11,
+           param_detection11, param_stereo_link11, param_strip_mode11, param_gating11, param_output11, param_mode11, param_solo11, param_bypass11,
+           param_drive11, param_blend11,
+           param_notebook,
+           param_count };
+    PLUGIN_NAME_ID_LABEL("multibandsoft12band", "multibandsoft12band", "Multiband Soft 12 band")
+};
+
+/// Adriano's multiband soft 6 band - metadata
+struct multibandsoft6band_metadata: public plugin_metadata<multibandsoft6band_metadata>
+{
+    enum { in_count = 2, out_count = 12, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { param_level_in,
+           STEREO_VU_METER_IN_PARAMS,
+           param_freq0, param_freq1, param_freq2, param_freq3, param_freq4,
+           param_fast,
+           param_range0, param_threshold0, param_ratio0, param_attack0, param_release0, param_makeup0, param_knee0, param_delay0,
+           param_detection0, param_stereo_link0, param_strip_mode0, param_gating0, param_output0, param_mode0, param_solo0, param_bypass0,
+           param_drive0, param_blend0,
+           param_range1, param_threshold1, param_ratio1, param_attack1, param_release1, param_makeup1, param_knee1, param_delay1,
+           param_detection1, param_stereo_link1, param_strip_mode1, param_gating1, param_output1, param_mode1, param_solo1, param_bypass1,
+           param_drive1, param_blend1,
+           param_range2, param_threshold2, param_ratio2, param_attack2, param_release2, param_makeup2, param_knee2, param_delay2,
+           param_detection2, param_stereo_link2, param_strip_mode2, param_gating2, param_output2, param_mode2, param_solo2, param_bypass2,
+           param_drive2, param_blend2,
+           param_range3, param_threshold3, param_ratio3, param_attack3, param_release3, param_makeup3, param_knee3, param_delay3,
+           param_detection3, param_stereo_link3, param_strip_mode3, param_gating3, param_output3, param_mode3, param_solo3, param_bypass3,
+           param_drive3, param_blend3,
+           param_range4, param_threshold4, param_ratio4, param_attack4, param_release4, param_makeup4, param_knee4, param_delay4,
+           param_detection4, param_stereo_link4, param_strip_mode4, param_gating4, param_output4, param_mode4, param_solo4, param_bypass4,
+           param_drive4, param_blend4,
+           param_range5, param_threshold5, param_ratio5, param_attack5, param_release5, param_makeup5, param_knee5, param_delay5,
+           param_detection5, param_stereo_link5, param_strip_mode5, param_gating5, param_output5, param_mode5, param_solo5, param_bypass5,
+           param_drive5, param_blend5,
+           param_notebook,
+           param_count };
+    PLUGIN_NAME_ID_LABEL("multibandsoft6band", "multibandsoft6band", "Multiband Soft 6 band")
+};
+
+/// Adriano's sidechain multiband soft 6 band - metadata
+struct scmultibandsoft6band_metadata: public plugin_metadata<scmultibandsoft6band_metadata>
+{
+    enum { in_count = 4, out_count = 24, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { param_level_in,
+           STEREO_VU_METER_IN_PARAMS,
+           param_freq0, param_freq1, param_freq2, param_freq3, param_freq4,
+           param_fast, param_scmode,
+           param_range0, param_threshold0, param_ratio0, param_attack0, param_release0, param_makeup0, param_knee0, param_delay0,
+           param_detection0, param_stereo_link0, param_strip_mode0, param_gating0, param_output0, param_mode0, param_solo0, param_bypass0,
+           param_drive0, param_blend0,
+           param_range1, param_threshold1, param_ratio1, param_attack1, param_release1, param_makeup1, param_knee1, param_delay1,
+           param_detection1, param_stereo_link1, param_strip_mode1, param_gating1, param_output1, param_mode1, param_solo1, param_bypass1,
+           param_drive1, param_blend1,
+           param_range2, param_threshold2, param_ratio2, param_attack2, param_release2, param_makeup2, param_knee2, param_delay2,
+           param_detection2, param_stereo_link2, param_strip_mode2, param_gating2, param_output2, param_mode2, param_solo2, param_bypass2,
+           param_drive2, param_blend2,
+           param_range3, param_threshold3, param_ratio3, param_attack3, param_release3, param_makeup3, param_knee3, param_delay3,
+           param_detection3, param_stereo_link3, param_strip_mode3, param_gating3, param_output3, param_mode3, param_solo3, param_bypass3,
+           param_drive3, param_blend3,
+           param_range4, param_threshold4, param_ratio4, param_attack4, param_release4, param_makeup4, param_knee4, param_delay4,
+           param_detection4, param_stereo_link4, param_strip_mode4, param_gating4, param_output4, param_mode4, param_solo4, param_bypass4,
+           param_drive4, param_blend4,
+           param_range5, param_threshold5, param_ratio5, param_attack5, param_release5, param_makeup5, param_knee5, param_delay5,
+           param_detection5, param_stereo_link5, param_strip_mode5, param_gating5, param_output5, param_mode5, param_solo5, param_bypass5,
+           param_drive5, param_blend5,
+           param_notebook,
+           param_count };
+    PLUGIN_NAME_ID_LABEL("scmultibandsoft6band", "scmultibandsoft6band", "Sidechain Multiband Soft 6 band")
+};
+
+/// Adriano's Elastic EQ - metadata
+struct elasticeq_metadata: public plugin_metadata<elasticeq_metadata>
+{
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { param_bypass, param_level_in, param_level_out,
+           STEREO_VU_METER_PARAMS,
+           param_range, param_threshold, param_ratio, param_attack, param_release, param_knee, param_detection, param_stereo_link, param_gating,
+           param_p1_active, param_p1_level, param_p1_freq, param_p1_q,
+           param_p2_active, param_p2_level, param_p2_freq, param_p2_q,
+           param_p3_active, param_p3_level, param_p3_freq, param_p3_q,
+           param_p4_active, param_p4_level, param_p4_freq, param_p4_q,
+           param_p5_active, param_p5_level, param_p5_freq, param_p5_q,
+           param_p6_active, param_p6_level, param_p6_freq, param_p6_q,
+           param_p7_active, param_p7_level, param_p7_freq, param_p7_q,
+           param_p8_active, param_p8_level, param_p8_freq, param_p8_q,
+           param_draw_labels, param_force, param_individuals, param_zoom,
+           param_count };
+    enum { PeakBands = 8, first_graph_param = param_p1_active, last_graph_param = param_p8_q };
+    PLUGIN_NAME_ID_LABEL("elasticeq", "elasticeq", "Elastic Equalizer")
+};
+
+/// Adriano's Multistrip Elastic EQ - metadata
+struct mstripelasticeq_metadata: public plugin_metadata<mstripelasticeq_metadata>
+{
+    enum { in_count = 14, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { param_bypass,
+           param_range0, param_threshold0, param_ratio0, param_attack0, param_release0, param_knee0, param_detection0, param_stereo_link0, param_gating0,
+           param_range1, param_threshold1, param_ratio1, param_attack1, param_release1, param_knee1, param_detection1, param_stereo_link1, param_gating1,
+           param_range2, param_threshold2, param_ratio2, param_attack2, param_release2, param_knee2, param_detection2, param_stereo_link2, param_gating2,
+           param_range3, param_threshold3, param_ratio3, param_attack3, param_release3, param_knee3, param_detection3, param_stereo_link3, param_gating3,
+           param_range4, param_threshold4, param_ratio4, param_attack4, param_release4, param_knee4, param_detection4, param_stereo_link4, param_gating4,
+           param_range5, param_threshold5, param_ratio5, param_attack5, param_release5, param_knee5, param_detection5, param_stereo_link5, param_gating5,
+           param_range6, param_threshold6, param_ratio6, param_attack6, param_release6, param_knee6, param_detection6, param_stereo_link6, param_gating6,
+           param_p01_active, param_p01_level, param_p01_freq, param_p01_q,
+           param_p02_active, param_p02_level, param_p02_freq, param_p02_q,
+           param_p03_active, param_p03_level, param_p03_freq, param_p03_q,
+           param_p04_active, param_p04_level, param_p04_freq, param_p04_q,
+           param_p05_active, param_p05_level, param_p05_freq, param_p05_q,
+           param_p06_active, param_p06_level, param_p06_freq, param_p06_q,
+           param_p11_active, param_p11_level, param_p11_freq, param_p11_q,
+           param_p12_active, param_p12_level, param_p12_freq, param_p12_q,
+           param_p13_active, param_p13_level, param_p13_freq, param_p13_q,
+           param_p14_active, param_p14_level, param_p14_freq, param_p14_q,
+           param_p15_active, param_p15_level, param_p15_freq, param_p15_q,
+           param_p16_active, param_p16_level, param_p16_freq, param_p16_q,
+           param_p21_active, param_p21_level, param_p21_freq, param_p21_q,
+           param_p22_active, param_p22_level, param_p22_freq, param_p22_q,
+           param_p23_active, param_p23_level, param_p23_freq, param_p23_q,
+           param_p24_active, param_p24_level, param_p24_freq, param_p24_q,
+           param_p25_active, param_p25_level, param_p25_freq, param_p25_q,
+           param_p26_active, param_p26_level, param_p26_freq, param_p26_q,
+           param_p31_active, param_p31_level, param_p31_freq, param_p31_q,
+           param_p32_active, param_p32_level, param_p32_freq, param_p32_q,
+           param_p33_active, param_p33_level, param_p33_freq, param_p33_q,
+           param_p34_active, param_p34_level, param_p34_freq, param_p34_q,
+           param_p35_active, param_p35_level, param_p35_freq, param_p35_q,
+           param_p36_active, param_p36_level, param_p36_freq, param_p36_q,
+           param_p41_active, param_p41_level, param_p41_freq, param_p41_q,
+           param_p42_active, param_p42_level, param_p42_freq, param_p42_q,
+           param_p43_active, param_p43_level, param_p43_freq, param_p43_q,
+           param_p44_active, param_p44_level, param_p44_freq, param_p44_q,
+           param_p45_active, param_p45_level, param_p45_freq, param_p45_q,
+           param_p46_active, param_p46_level, param_p46_freq, param_p46_q,
+           param_p51_active, param_p51_level, param_p51_freq, param_p51_q,
+           param_p52_active, param_p52_level, param_p52_freq, param_p52_q,
+           param_p53_active, param_p53_level, param_p53_freq, param_p53_q,
+           param_p54_active, param_p54_level, param_p54_freq, param_p54_q,
+           param_p55_active, param_p55_level, param_p55_freq, param_p55_q,
+           param_p56_active, param_p56_level, param_p56_freq, param_p56_q,
+           param_p61_active, param_p61_level, param_p61_freq, param_p61_q,
+           param_p62_active, param_p62_level, param_p62_freq, param_p62_q,
+           param_p63_active, param_p63_level, param_p63_freq, param_p63_q,
+           param_p64_active, param_p64_level, param_p64_freq, param_p64_q,
+           param_p65_active, param_p65_level, param_p65_freq, param_p65_q,
+           param_p66_active, param_p66_level, param_p66_freq, param_p66_q,
+           param_notebook,
+           param_draw_labels, param_force, param_individuals, param_zoom,
+           param_selected_only,
+           param_count };
+    enum { PeakBands = 42, first_graph_param = param_p01_active, last_graph_param = param_p66_q };
+    PLUGIN_NAME_ID_LABEL("mstripelasticeq", "mstripelasticeq", "Multstrip Elastic Equalizer")
+};
+
+/// Adriano's Sidechain Multistrip Elastic EQ - metadata
+struct scmstripelasticeq_metadata: public plugin_metadata<scmstripelasticeq_metadata>
+{
+    enum { in_count = 28, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { param_bypass,
+           param_range0, param_threshold0, param_ratio0, param_attack0, param_release0, param_knee0, param_detection0, param_stereo_link0, param_gating0,
+           param_range1, param_threshold1, param_ratio1, param_attack1, param_release1, param_knee1, param_detection1, param_stereo_link1, param_gating1,
+           param_range2, param_threshold2, param_ratio2, param_attack2, param_release2, param_knee2, param_detection2, param_stereo_link2, param_gating2,
+           param_range3, param_threshold3, param_ratio3, param_attack3, param_release3, param_knee3, param_detection3, param_stereo_link3, param_gating3,
+           param_range4, param_threshold4, param_ratio4, param_attack4, param_release4, param_knee4, param_detection4, param_stereo_link4, param_gating4,
+           param_range5, param_threshold5, param_ratio5, param_attack5, param_release5, param_knee5, param_detection5, param_stereo_link5, param_gating5,
+           param_range6, param_threshold6, param_ratio6, param_attack6, param_release6, param_knee6, param_detection6, param_stereo_link6, param_gating6,
+           param_p01_active, param_p01_level, param_p01_freq, param_p01_q,
+           param_p02_active, param_p02_level, param_p02_freq, param_p02_q,
+           param_p03_active, param_p03_level, param_p03_freq, param_p03_q,
+           param_p04_active, param_p04_level, param_p04_freq, param_p04_q,
+           param_p05_active, param_p05_level, param_p05_freq, param_p05_q,
+           param_p06_active, param_p06_level, param_p06_freq, param_p06_q,
+           param_p11_active, param_p11_level, param_p11_freq, param_p11_q,
+           param_p12_active, param_p12_level, param_p12_freq, param_p12_q,
+           param_p13_active, param_p13_level, param_p13_freq, param_p13_q,
+           param_p14_active, param_p14_level, param_p14_freq, param_p14_q,
+           param_p15_active, param_p15_level, param_p15_freq, param_p15_q,
+           param_p16_active, param_p16_level, param_p16_freq, param_p16_q,
+           param_p21_active, param_p21_level, param_p21_freq, param_p21_q,
+           param_p22_active, param_p22_level, param_p22_freq, param_p22_q,
+           param_p23_active, param_p23_level, param_p23_freq, param_p23_q,
+           param_p24_active, param_p24_level, param_p24_freq, param_p24_q,
+           param_p25_active, param_p25_level, param_p25_freq, param_p25_q,
+           param_p26_active, param_p26_level, param_p26_freq, param_p26_q,
+           param_p31_active, param_p31_level, param_p31_freq, param_p31_q,
+           param_p32_active, param_p32_level, param_p32_freq, param_p32_q,
+           param_p33_active, param_p33_level, param_p33_freq, param_p33_q,
+           param_p34_active, param_p34_level, param_p34_freq, param_p34_q,
+           param_p35_active, param_p35_level, param_p35_freq, param_p35_q,
+           param_p36_active, param_p36_level, param_p36_freq, param_p36_q,
+           param_p41_active, param_p41_level, param_p41_freq, param_p41_q,
+           param_p42_active, param_p42_level, param_p42_freq, param_p42_q,
+           param_p43_active, param_p43_level, param_p43_freq, param_p43_q,
+           param_p44_active, param_p44_level, param_p44_freq, param_p44_q,
+           param_p45_active, param_p45_level, param_p45_freq, param_p45_q,
+           param_p46_active, param_p46_level, param_p46_freq, param_p46_q,
+           param_p51_active, param_p51_level, param_p51_freq, param_p51_q,
+           param_p52_active, param_p52_level, param_p52_freq, param_p52_q,
+           param_p53_active, param_p53_level, param_p53_freq, param_p53_q,
+           param_p54_active, param_p54_level, param_p54_freq, param_p54_q,
+           param_p55_active, param_p55_level, param_p55_freq, param_p55_q,
+           param_p56_active, param_p56_level, param_p56_freq, param_p56_q,
+           param_p61_active, param_p61_level, param_p61_freq, param_p61_q,
+           param_p62_active, param_p62_level, param_p62_freq, param_p62_q,
+           param_p63_active, param_p63_level, param_p63_freq, param_p63_q,
+           param_p64_active, param_p64_level, param_p64_freq, param_p64_q,
+           param_p65_active, param_p65_level, param_p65_freq, param_p65_q,
+           param_p66_active, param_p66_level, param_p66_freq, param_p66_q,
+           param_notebook,
+           param_draw_labels, param_force, param_individuals, param_zoom,
+           param_selected_only,
+           param_count };
+    enum { PeakBands = 42, first_graph_param = param_p01_active, last_graph_param = param_p66_q };
+    PLUGIN_NAME_ID_LABEL("scmstripelasticeq", "scmstripelasticeq", "Sidechain Multistrip Elastic Equalizer")
+};
+
 /// Markus's limiter - metadata
 struct limiter_metadata: public plugin_metadata<limiter_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_limit, param_attack, param_release,
@@ -360,7 +618,7 @@ struct limiter_metadata: public plugin_metadata<limiter_metadata>
 /// Markus's and Chrischis multibandlimiter - metadata
 struct multibandlimiter_metadata: public plugin_metadata<multibandlimiter_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_freq0, param_freq1, param_freq2,
@@ -380,7 +638,7 @@ struct multibandlimiter_metadata: public plugin_metadata<multibandlimiter_metada
 /// Markus's and Chrischis sidechainlimiter - metadata
 struct sidechainlimiter_metadata: public plugin_metadata<sidechainlimiter_metadata>
 {
-    enum { in_count = 4, out_count = 2, ins_optional = 2, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 4, out_count = 2, ins_optional = 2, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_meter_scL, param_meter_scR,
@@ -401,7 +659,7 @@ struct sidechainlimiter_metadata: public plugin_metadata<sidechainlimiter_metada
 /// Damien's RIAA and CD Emphasis - metadata
 struct emphasis_metadata: public plugin_metadata<emphasis_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out, STEREO_VU_METER_PARAMS, param_mode, param_type,
            param_count };
     PLUGIN_NAME_ID_LABEL("emphasis", "emphasis", "Emphasis")
@@ -410,7 +668,7 @@ struct emphasis_metadata: public plugin_metadata<emphasis_metadata>
 /// Markus's 5-band EQ - metadata
 struct equalizer5band_metadata: public plugin_metadata<equalizer5band_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_ls_active, param_ls_level, param_ls_freq, param_ls_q,
@@ -418,7 +676,7 @@ struct equalizer5band_metadata: public plugin_metadata<equalizer5band_metadata>
            param_p1_active, param_p1_level, param_p1_freq, param_p1_q,
            param_p2_active, param_p2_level, param_p2_freq, param_p2_q,
            param_p3_active, param_p3_level, param_p3_freq, param_p3_q,
-           param_individuals, param_zoom, param_analyzer_active, param_analyzer_mode,
+           param_draw_labels, param_individuals, param_zoom, param_analyzer_active, param_analyzer_mode,
            param_count };
     // dummy parameter numbers, shouldn't be used EVER, they're only there to avoid pushing LP/HP filters to a separate class
     // and potentially making inlining and optimization harder for the compiler
@@ -430,7 +688,7 @@ struct equalizer5band_metadata: public plugin_metadata<equalizer5band_metadata>
 /// Markus's 8-band EQ - metadata
 struct equalizer8band_metadata: public plugin_metadata<equalizer8band_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_hp_active, param_hp_freq, param_hp_mode, param_hp_q,
@@ -441,13 +699,36 @@ struct equalizer8band_metadata: public plugin_metadata<equalizer8band_metadata>
            param_p2_active, param_p2_level, param_p2_freq, param_p2_q,
            param_p3_active, param_p3_level, param_p3_freq, param_p3_q,
            param_p4_active, param_p4_level, param_p4_freq, param_p4_q,
-           param_individuals, param_zoom, param_analyzer_active, param_analyzer_mode,
+           param_draw_labels, param_individuals, param_zoom, param_analyzer_active, param_analyzer_mode,
            param_count };
     enum { PeakBands = 4, first_graph_param = param_hp_active, last_graph_param = param_p4_q };
     PLUGIN_NAME_ID_LABEL("equalizer8band", "eq8", "Equalizer 8 Band")
 };
 /// Markus's 12-band EQ - metadata
 struct equalizer12band_metadata: public plugin_metadata<equalizer12band_metadata>
+{
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
+    enum { param_bypass, param_level_in, param_level_out,
+           STEREO_VU_METER_PARAMS,
+           param_hp_active, param_hp_freq, param_hp_mode, param_hp_q,
+           param_lp_active, param_lp_freq, param_lp_mode, param_lp_q,
+           param_ls_active, param_ls_level, param_ls_freq, param_ls_q,
+           param_hs_active, param_hs_level, param_hs_freq, param_hs_q,
+           param_p1_active, param_p1_level, param_p1_freq, param_p1_q,
+           param_p2_active, param_p2_level, param_p2_freq, param_p2_q,
+           param_p3_active, param_p3_level, param_p3_freq, param_p3_q,
+           param_p4_active, param_p4_level, param_p4_freq, param_p4_q,
+           param_p5_active, param_p5_level, param_p5_freq, param_p5_q,
+           param_p6_active, param_p6_level, param_p6_freq, param_p6_q,
+           param_p7_active, param_p7_level, param_p7_freq, param_p7_q,
+           param_p8_active, param_p8_level, param_p8_freq, param_p8_q,
+           param_draw_labels, param_individuals, param_zoom, param_analyzer_active, param_analyzer_mode,
+           param_count };
+    enum { PeakBands = 8, first_graph_param = param_hp_active, last_graph_param = param_p8_q };
+    PLUGIN_NAME_ID_LABEL("equalizer12band", "eq12", "Equalizer 12 Band")
+};
+/// Markus's 20-band EQ - metadata
+struct equalizer20band_metadata: public plugin_metadata<equalizer20band_metadata>
 {
     enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
     enum { param_bypass, param_level_in, param_level_out,
@@ -464,15 +745,23 @@ struct equalizer12band_metadata: public plugin_metadata<equalizer12band_metadata
            param_p6_active, param_p6_level, param_p6_freq, param_p6_q,
            param_p7_active, param_p7_level, param_p7_freq, param_p7_q,
            param_p8_active, param_p8_level, param_p8_freq, param_p8_q,
-           param_individuals, param_zoom, param_analyzer_active, param_analyzer_mode,
+           param_p9_active, param_p9_level, param_p9_freq, param_p9_q,
+           param_p10_active, param_p10_level, param_p10_freq, param_p10_q,
+           param_p11_active, param_p11_level, param_p11_freq, param_p11_q,
+           param_p12_active, param_p12_level, param_p12_freq, param_p12_q,
+           param_p13_active, param_p13_level, param_p13_freq, param_p13_q,
+           param_p14_active, param_p14_level, param_p14_freq, param_p14_q,
+           param_p15_active, param_p15_level, param_p15_freq, param_p15_q,
+           param_p16_active, param_p16_level, param_p16_freq, param_p16_q,
+           param_draw_labels, param_individuals, param_zoom, param_analyzer_active, param_analyzer_mode,
            param_count };
-    enum { PeakBands = 8, first_graph_param = param_hp_active, last_graph_param = param_p8_q };
-    PLUGIN_NAME_ID_LABEL("equalizer12band", "eq12", "Equalizer 12 Band")
+    enum { PeakBands = 16, first_graph_param = param_hp_active, last_graph_param = param_p16_q };
+    PLUGIN_NAME_ID_LABEL("equalizer20band", "eq20", "Equalizer 20 Band")
 };
 /// 30-band EQ - metadata
 struct equalizer30band_metadata: public plugin_metadata<equalizer30band_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum {
             param_level_in, param_level_in_vuL, param_level_in_vuR, param_level_in_clipL, param_level_in_clipR,
             param_bypass, param_filters,
@@ -553,10 +842,83 @@ struct equalizer30band_metadata: public plugin_metadata<equalizer30band_metadata
 
     PLUGIN_NAME_ID_LABEL("equalizer30band", "eq30", "Equalizer 30 Band")
 };
+/// Markus's 58-band EQ - metadata
+struct equalizer58band_metadata: public plugin_metadata<equalizer58band_metadata>
+{
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { param_bypass, param_level_in, param_level_out,
+           STEREO_VU_METER_PARAMS,
+           param_p1_active, param_p1_level, param_p1_freq, param_p1_q,
+           param_p2_active, param_p2_level, param_p2_freq, param_p2_q,
+           param_p3_active, param_p3_level, param_p3_freq, param_p3_q,
+           param_p4_active, param_p4_level, param_p4_freq, param_p4_q,
+           param_p5_active, param_p5_level, param_p5_freq, param_p5_q,
+           param_p6_active, param_p6_level, param_p6_freq, param_p6_q,
+           param_p7_active, param_p7_level, param_p7_freq, param_p7_q,
+           param_p8_active, param_p8_level, param_p8_freq, param_p8_q,
+           param_p9_active, param_p9_level, param_p9_freq, param_p9_q,
+           param_p10_active, param_p10_level, param_p10_freq, param_p10_q,
+           param_p11_active, param_p11_level, param_p11_freq, param_p11_q,
+           param_p12_active, param_p12_level, param_p12_freq, param_p12_q,
+           param_p13_active, param_p13_level, param_p13_freq, param_p13_q,
+           param_p14_active, param_p14_level, param_p14_freq, param_p14_q,
+           param_p15_active, param_p15_level, param_p15_freq, param_p15_q,
+           param_p16_active, param_p16_level, param_p16_freq, param_p16_q,
+           param_p17_active, param_p17_level, param_p17_freq, param_p17_q,
+           param_p18_active, param_p18_level, param_p18_freq, param_p18_q,
+           param_p19_active, param_p19_level, param_p19_freq, param_p19_q,
+           param_p20_active, param_p20_level, param_p20_freq, param_p20_q,
+           param_p21_active, param_p21_level, param_p21_freq, param_p21_q,
+           param_p22_active, param_p22_level, param_p22_freq, param_p22_q,
+           param_p23_active, param_p23_level, param_p23_freq, param_p23_q,
+           param_p24_active, param_p24_level, param_p24_freq, param_p24_q,
+           param_p25_active, param_p25_level, param_p25_freq, param_p25_q,
+           param_p26_active, param_p26_level, param_p26_freq, param_p26_q,
+           param_p27_active, param_p27_level, param_p27_freq, param_p27_q,
+           param_p28_active, param_p28_level, param_p28_freq, param_p28_q,
+           param_p29_active, param_p29_level, param_p29_freq, param_p29_q,
+           param_p30_active, param_p30_level, param_p30_freq, param_p30_q,
+           param_p31_active, param_p31_level, param_p31_freq, param_p31_q,
+           param_p32_active, param_p32_level, param_p32_freq, param_p32_q,
+           param_p33_active, param_p33_level, param_p33_freq, param_p33_q,
+           param_p34_active, param_p34_level, param_p34_freq, param_p34_q,
+           param_p35_active, param_p35_level, param_p35_freq, param_p35_q,
+           param_p36_active, param_p36_level, param_p36_freq, param_p36_q,
+           param_p37_active, param_p37_level, param_p37_freq, param_p37_q,
+           param_p38_active, param_p38_level, param_p38_freq, param_p38_q,
+           param_p39_active, param_p39_level, param_p39_freq, param_p39_q,
+           param_p40_active, param_p40_level, param_p40_freq, param_p40_q,
+           param_p41_active, param_p41_level, param_p41_freq, param_p41_q,
+           param_p42_active, param_p42_level, param_p42_freq, param_p42_q,
+           param_p43_active, param_p43_level, param_p43_freq, param_p43_q,
+           param_p44_active, param_p44_level, param_p44_freq, param_p44_q,
+           param_p45_active, param_p45_level, param_p45_freq, param_p45_q,
+           param_p46_active, param_p46_level, param_p46_freq, param_p46_q,
+           param_p47_active, param_p47_level, param_p47_freq, param_p47_q,
+           param_p48_active, param_p48_level, param_p48_freq, param_p48_q,
+           param_p49_active, param_p49_level, param_p49_freq, param_p49_q,
+           param_p50_active, param_p50_level, param_p50_freq, param_p50_q,
+           param_p51_active, param_p51_level, param_p51_freq, param_p51_q,
+           param_p52_active, param_p52_level, param_p52_freq, param_p52_q,
+           param_p53_active, param_p53_level, param_p53_freq, param_p53_q,
+           param_p54_active, param_p54_level, param_p54_freq, param_p54_q,
+           param_p55_active, param_p55_level, param_p55_freq, param_p55_q,
+           param_p56_active, param_p56_level, param_p56_freq, param_p56_q,
+           param_p57_active, param_p57_level, param_p57_freq, param_p57_q,
+           param_p58_active, param_p58_level, param_p58_freq, param_p58_q,
+           param_draw_labels, param_individuals, param_zoom, param_analyzer_active, param_analyzer_mode,
+           param_count };
+    enum { PeakBands = 58, first_graph_param = param_p1_active, last_graph_param = param_p58_q };
+    PLUGIN_NAME_ID_LABEL("equalizer58band", "eq58", "Equalizer 58 Band")
+    // dummy parameter numbers, shouldn't be used EVER, they're only there to avoid pushing LP/HP filters to a separate class
+    // and potentially making inlining and optimization harder for the compiler
+    enum { param_lp_active = 0xDEADBEEF, param_hp_active, param_hp_mode, param_lp_mode, param_hp_freq, param_lp_freq, param_hp_q, param_lp_q, param_ls_active, param_hs_active, param_hs_level, param_ls_level, param_hs_freq, param_ls_freq, param_ls_q, param_hs_q};
+};
+
 /// Markus's X-Overs
 struct xover2_metadata: public plugin_metadata<xover2_metadata>
 {
-    enum { in_count = 2, out_count = 4, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 4, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_level, param_meter_0, param_meter_1, param_mode,
            param_freq0,
            param_level1, param_active1, param_phase1, param_delay1, param_meter_01, param_meter_11,
@@ -567,7 +929,7 @@ struct xover2_metadata: public plugin_metadata<xover2_metadata>
 };
 struct xover3_metadata: public plugin_metadata<xover3_metadata>
 {
-    enum { in_count = 2, out_count = 6, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 6, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_level, param_meter_0, param_meter_1, param_mode,
            param_freq0, param_freq1,
            param_level1, param_active1, param_phase1, param_delay1, param_meter_01, param_meter_11,
@@ -579,7 +941,7 @@ struct xover3_metadata: public plugin_metadata<xover3_metadata>
 };
 struct xover4_metadata: public plugin_metadata<xover4_metadata>
 {
-    enum { in_count = 2, out_count = 8, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 8, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_level, param_meter_0, param_meter_1, param_mode,
            param_freq0, param_freq1, param_freq2,
            param_level1, param_active1, param_phase1, param_delay1, param_meter_01, param_meter_11,
@@ -590,58 +952,76 @@ struct xover4_metadata: public plugin_metadata<xover4_metadata>
     enum { channels = 2, bands = 4 };
     PLUGIN_NAME_ID_LABEL("xover4band", "xover4", "X-Over 4 Band")
 };
+struct xover8_metadata: public plugin_metadata<xover8_metadata>
+{
+    enum { in_count = 2, out_count = 16, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { param_level, param_meter_0, param_meter_1, param_mode,
+           param_freq0, param_freq1, param_freq2, param_freq3, param_freq4, param_freq5, param_freq6,
+           param_level1, param_active1, param_phase1, param_delay1, param_meter_01, param_meter_11,
+           param_level2, param_active2, param_phase2, param_delay2, param_meter_02, param_meter_12,
+           param_level3, param_active3, param_phase3, param_delay3, param_meter_03, param_meter_13,
+           param_level4, param_active4, param_phase4, param_delay4, param_meter_04, param_meter_14,
+           param_level5, param_active5, param_phase5, param_delay5, param_meter_05, param_meter_15,
+           param_level6, param_active6, param_phase6, param_delay6, param_meter_06, param_meter_16,
+           param_level7, param_active7, param_phase7, param_delay7, param_meter_07, param_meter_17,
+           param_level8, param_active8, param_phase8, param_delay8, param_meter_08, param_meter_18,
+           param_count };
+    enum { channels = 2, bands = 8 };
+    PLUGIN_NAME_ID_LABEL("xover8band", "xover8", "X-Over 8 Band")
+};
 
 /// Markus and Chrischis Vocoder - metadata
 struct vocoder_metadata: public plugin_metadata<vocoder_metadata>
 {
-    enum { in_count = 4, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 4, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_link, param_detectors,
            param_carrier_in, param_carrier_inL, param_carrier_inR, param_carrier_clip_inL, param_carrier_clip_inR,
            param_mod_in, param_mod_inL, param_mod_inR, param_mod_clip_inL, param_mod_clip_inR,
            param_out, param_outL, param_outR, param_clip_outL, param_clip_outR,
            param_carrier, param_mod, param_proc, param_order, param_bands, param_hiq,
            param_attack, param_release, param_analyzer,
-           param_volume0, param_pan0, param_noise0, param_mod0, param_solo0, param_level0,
-           param_volume1, param_pan1, param_noise1, param_mod1, param_solo1, param_level1,
-           param_volume2, param_pan2, param_noise2, param_mod2, param_solo2, param_level2,
-           param_volume3, param_pan3, param_noise3, param_mod3, param_solo3, param_level3,
-           param_volume4, param_pan4, param_noise4, param_mod4, param_solo4, param_level4,
-           param_volume5, param_pan5, param_noise5, param_mod5, param_solo5, param_level5,
-           param_volume6, param_pan6, param_noise6, param_mod6, param_solo6, param_level6,
-           param_volume7, param_pan7, param_noise7, param_mod7, param_solo7, param_level7,
-           param_volume8, param_pan8, param_noise8, param_mod8, param_solo8, param_level8,
-           param_volume9, param_pan9, param_noise9, param_mod9, param_solo9, param_level9,
-           param_volume10, param_pan10, param_noise10, param_mod10, param_solo10, param_level10,
-           param_volume11, param_pan11, param_noise11, param_mod11, param_solo11, param_level11,
-           param_volume12, param_pan12, param_noise12, param_mod12, param_solo12, param_level12,
-           param_volume13, param_pan13, param_noise13, param_mod13, param_solo13, param_level13,
-           param_volume14, param_pan14, param_noise14, param_mod14, param_solo14, param_level14,
-           param_volume15, param_pan15, param_noise15, param_mod15, param_solo15, param_level15,
-           param_volume16, param_pan16, param_noise16, param_mod16, param_solo16, param_level16,
-           param_volume17, param_pan17, param_noise17, param_mod17, param_solo17, param_level17,
-           param_volume18, param_pan18, param_noise18, param_mod18, param_solo18, param_level18,
-           param_volume19, param_pan19, param_noise19, param_mod19, param_solo19, param_level19,
-           param_volume20, param_pan20, param_noise20, param_mod20, param_solo20, param_level20,
-           param_volume21, param_pan21, param_noise21, param_mod21, param_solo21, param_level21,
-           param_volume22, param_pan22, param_noise22, param_mod22, param_solo22, param_level22,
-           param_volume23, param_pan23, param_noise23, param_mod23, param_solo23, param_level23,
-           param_volume24, param_pan24, param_noise24, param_mod24, param_solo24, param_level24,
-           param_volume25, param_pan25, param_noise25, param_mod25, param_solo25, param_level25,
-           param_volume26, param_pan26, param_noise26, param_mod26, param_solo26, param_level26,
-           param_volume27, param_pan27, param_noise27, param_mod27, param_solo27, param_level27,
-           param_volume28, param_pan28, param_noise28, param_mod28, param_solo28, param_level28,
-           param_volume29, param_pan29, param_noise29, param_mod29, param_solo29, param_level29,
-           param_volume30, param_pan30, param_noise30, param_mod30, param_solo30, param_level30,
-           param_volume31, param_pan31, param_noise31, param_mod31, param_solo31, param_level31,
+           param_volume0, param_pan0, param_noise0, param_mod0, param_solo0, param_level0, param_q0,
+           param_volume1, param_pan1, param_noise1, param_mod1, param_solo1, param_level1, param_q1,
+           param_volume2, param_pan2, param_noise2, param_mod2, param_solo2, param_level2, param_q2,
+           param_volume3, param_pan3, param_noise3, param_mod3, param_solo3, param_level3, param_q3,
+           param_volume4, param_pan4, param_noise4, param_mod4, param_solo4, param_level4, param_q4,
+           param_volume5, param_pan5, param_noise5, param_mod5, param_solo5, param_level5, param_q5,
+           param_volume6, param_pan6, param_noise6, param_mod6, param_solo6, param_level6, param_q6,
+           param_volume7, param_pan7, param_noise7, param_mod7, param_solo7, param_level7, param_q7,
+           param_volume8, param_pan8, param_noise8, param_mod8, param_solo8, param_level8, param_q8,
+           param_volume9, param_pan9, param_noise9, param_mod9, param_solo9, param_level9, param_q9,
+           param_volume10, param_pan10, param_noise10, param_mod10, param_solo10, param_level10, param_q10,
+           param_volume11, param_pan11, param_noise11, param_mod11, param_solo11, param_level11, param_q11,
+           param_volume12, param_pan12, param_noise12, param_mod12, param_solo12, param_level12, param_q12,
+           param_volume13, param_pan13, param_noise13, param_mod13, param_solo13, param_level13, param_q13,
+           param_volume14, param_pan14, param_noise14, param_mod14, param_solo14, param_level14, param_q14,
+           param_volume15, param_pan15, param_noise15, param_mod15, param_solo15, param_level15, param_q15,
+           param_volume16, param_pan16, param_noise16, param_mod16, param_solo16, param_level16, param_q16,
+           param_volume17, param_pan17, param_noise17, param_mod17, param_solo17, param_level17, param_q17,
+           param_volume18, param_pan18, param_noise18, param_mod18, param_solo18, param_level18, param_q18,
+           param_volume19, param_pan19, param_noise19, param_mod19, param_solo19, param_level19, param_q19,
+           param_volume20, param_pan20, param_noise20, param_mod20, param_solo20, param_level20, param_q20,
+           param_volume21, param_pan21, param_noise21, param_mod21, param_solo21, param_level21, param_q21,
+           param_volume22, param_pan22, param_noise22, param_mod22, param_solo22, param_level22, param_q22,
+           param_volume23, param_pan23, param_noise23, param_mod23, param_solo23, param_level23, param_q23,
+           param_volume24, param_pan24, param_noise24, param_mod24, param_solo24, param_level24, param_q24,
+           param_volume25, param_pan25, param_noise25, param_mod25, param_solo25, param_level25, param_q25,
+           param_volume26, param_pan26, param_noise26, param_mod26, param_solo26, param_level26, param_q26,
+           param_volume27, param_pan27, param_noise27, param_mod27, param_solo27, param_level27, param_q27,
+           param_volume28, param_pan28, param_noise28, param_mod28, param_solo28, param_level28, param_q28,
+           param_volume29, param_pan29, param_noise29, param_mod29, param_solo29, param_level29, param_q29,
+           param_volume30, param_pan30, param_noise30, param_mod30, param_solo30, param_level30, param_q30,
+           param_volume31, param_pan31, param_noise31, param_mod31, param_solo31, param_level31, param_q31,
+           param_lower, param_upper, param_tilt,
            param_count };
-    enum { band_params = 6 };
+    enum { band_params = 7 };
     PLUGIN_NAME_ID_LABEL("vocoder", "vocoder", "Vocoder")
 };
 
 /// Markus's Pulsator - metadata
 struct pulsator_metadata: public plugin_metadata<pulsator_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out, STEREO_VU_METER_PARAMS,
            param_mode, param_amount, param_offset_l, param_offset_r,
            param_mono, param_reset, param_pwidth,
@@ -653,7 +1033,7 @@ struct pulsator_metadata: public plugin_metadata<pulsator_metadata>
 /// Markus's Ring Modulator - metadata
 struct ringmodulator_metadata: public plugin_metadata<ringmodulator_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out, STEREO_VU_METER_PARAMS,
            param_mod_mode, param_mod_freq, param_mod_amount, param_mod_phase, param_mod_detune, param_mod_listen,
            
@@ -674,18 +1054,18 @@ struct ringmodulator_metadata: public plugin_metadata<ringmodulator_metadata>
 /// Markus's Saturator - metadata
 struct saturator_metadata: public plugin_metadata<saturator_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_mix, param_drive, param_blend,
            param_lp_pre_freq, param_hp_pre_freq, param_lp_post_freq, param_hp_post_freq,
-           param_p_freq, param_p_level, param_p_q, param_count };
+           param_p_freq, param_p_level, param_p_q, param_pre, param_post, param_count };
     PLUGIN_NAME_ID_LABEL("saturator", "saturator", "Saturator")
 };
 /// Markus's Exciter - metadata
 struct exciter_metadata: public plugin_metadata<exciter_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out, param_amount, MONO_VU_METER_PARAMS, param_drive, param_blend, param_meter_drive,
            param_freq, param_listen, param_ceil_active, param_ceil, param_count };
     PLUGIN_NAME_ID_LABEL("exciter", "exciter", "Exciter")
@@ -693,7 +1073,7 @@ struct exciter_metadata: public plugin_metadata<exciter_metadata>
 /// Markus's Bass Enhancer - metadata
 struct bassenhancer_metadata: public plugin_metadata<bassenhancer_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out, param_amount, MONO_VU_METER_PARAMS, param_drive, param_blend, param_meter_drive,
            param_freq, param_listen, param_floor_active, param_floor, param_count };
     PLUGIN_NAME_ID_LABEL("bassenhancer", "bassenhancer", "Bass Enhancer")
@@ -701,7 +1081,7 @@ struct bassenhancer_metadata: public plugin_metadata<bassenhancer_metadata>
 /// Markus's and Chrischi's Crusher Module - metadata
 struct crusher_metadata: public plugin_metadata<crusher_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS,
            param_bits, param_morph, param_mode, param_dc, param_aa,
@@ -712,7 +1092,7 @@ struct crusher_metadata: public plugin_metadata<crusher_metadata>
 /// Markus's Stereo Module - metadata
 struct stereo_metadata: public plugin_metadata<stereo_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS, param_balance_in, param_balance_out, param_softclip,
            param_mute_l, param_mute_r, param_phase_l, param_phase_r,
@@ -725,7 +1105,7 @@ struct stereo_metadata: public plugin_metadata<stereo_metadata>
 /// Markus's Mono Module - metadata
 struct mono_metadata: public plugin_metadata<mono_metadata>
 {
-    enum { in_count = 1, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 1, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            param_meter_in, param_meter_outL, param_meter_outR, param_clip_in,param_clip_outL, param_clip_outR,
            param_balance_out, param_softclip,
@@ -734,10 +1114,37 @@ struct mono_metadata: public plugin_metadata<mono_metadata>
            param_count };
     PLUGIN_NAME_ID_LABEL("mono", "mono", "Mono Input")
 };
+/// Markus's  multibandenhancer - metadata
+struct multibandenhancer_metadata: public plugin_metadata<multibandenhancer_metadata>
+{
+    enum { in_count = 2, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
+    enum { param_bypass, param_level_in, param_level_out,
+           STEREO_VU_METER_PARAMS,
+           param_freq0, param_freq1, param_freq2,
+           param_mode,
+           param_base0, param_base1, param_base2, param_base3,
+           param_drive0, param_drive1, param_drive2, param_drive3,
+           param_blend0, param_blend1, param_blend2, param_blend3,
+           param_solo0, param_solo1, param_solo2, param_solo3,
+           param_count };
+    PLUGIN_NAME_ID_LABEL("multibandenhancer", "multibandenhancer", "Multiband Enhancer")
+};
+/// Markus's  multispread - metadata
+struct multispread_metadata: public plugin_metadata<multispread_metadata>
+{
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 0, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
+    enum { param_bypass, param_level_in, param_level_out,
+           STEREO_VU_METER_PARAMS,
+           param_mono, param_filters,
+           param_amount0, param_amount1, param_amount2, param_amount3,
+           param_intensity,
+           param_count };
+    PLUGIN_NAME_ID_LABEL("multispread", "multispread", "Multi Spread")
+};
 /// Markus's and Chrischi's Analyzer
 struct analyzer_metadata: public plugin_metadata<analyzer_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = true };
     enum { param_meter_L, param_meter_R, param_clip_L, param_clip_R,
            param_analyzer_level, param_analyzer_mode,
            param_analyzer_scale, param_analyzer_post,
@@ -752,7 +1159,7 @@ struct analyzer_metadata: public plugin_metadata<analyzer_metadata>
 /// Markus's and Chrischi's Transient Designer
 struct transientdesigner_metadata: public plugin_metadata<transientdesigner_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS, param_mix,
            param_attack_time, param_attack_boost,
@@ -762,10 +1169,27 @@ struct transientdesigner_metadata: public plugin_metadata<transientdesigner_meta
            param_count };
     PLUGIN_NAME_ID_LABEL("transientdesigner", "transientdesigner", "Transient Designer")
 };
-/// Chrischi's and Markus's Tape Simulator
+/// Markus's Vinyl Simulator
+struct vinyl_metadata: public plugin_metadata<vinyl_metadata>
+{
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = true };
+    enum { param_bypass, param_level_in, param_level_out,
+           STEREO_VU_METER_PARAMS,
+           param_drone, param_speed, param_aging, param_freq,
+           param_gain0, param_pitch0, param_active0,
+           param_gain1, param_pitch1, param_active1,
+           param_gain2, param_pitch2, param_active2,
+           param_gain3, param_pitch3, param_active3,
+           param_gain4, param_pitch4, param_active4,
+           param_gain5, param_pitch5, param_active5,
+           param_gain6, param_pitch6, param_active6,
+           param_count };
+    PLUGIN_NAME_ID_LABEL("vinyl", "vinyl", "Vinyl")
+};
+/// Markus's Tape Simulator
 struct tapesimulator_metadata: public plugin_metadata<tapesimulator_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { param_bypass, param_level_in, param_level_out,
            STEREO_VU_METER_PARAMS, param_mix, param_lp,
            param_speed, param_noise, param_mechanical, param_magnetical, param_post,
@@ -862,7 +1286,7 @@ struct organ_enums
 /// Organ - metadata
 struct organ_metadata: public organ_enums, public plugin_metadata<organ_metadata>
 {
-    enum { in_count = 0, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = true, rt_capable = true };
+    enum { in_count = 0, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = true, rt_capable = true, require_instance_access = false };
     PLUGIN_NAME_ID_LABEL("organ", "organ", "Organ")
 
 public:
@@ -874,7 +1298,7 @@ public:
 struct fluidsynth_metadata: public plugin_metadata<fluidsynth_metadata>
 {
     enum { par_master, par_interpolation, par_reverb, par_chorus, param_count };
-    enum { in_count = 0, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = true, rt_capable = false };
+    enum { in_count = 0, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = true, rt_capable = false, require_instance_access = true };
     PLUGIN_NAME_ID_LABEL("fluidsynth", "fluidsynth", "Fluidsynth")
 
 public:
@@ -953,7 +1377,7 @@ struct wavetable_metadata: public plugin_metadata<wavetable_metadata>
         par_lfo1rate,
         par_lfo2rate,
         param_count };
-    enum { in_count = 0, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = true, rt_capable = true };
+    enum { in_count = 0, out_count = 2, ins_optional = 0, outs_optional = 0, support_midi = true, require_midi = true, rt_capable = true, require_instance_access = false };
     enum { mod_matrix_slots = 10 };
     enum { step_size = 64 };
     PLUGIN_NAME_ID_LABEL("wavetable", "wavetable", "Wavetable")
@@ -967,7 +1391,7 @@ struct wavetable_metadata: public plugin_metadata<wavetable_metadata>
 
 struct pitch_metadata: public plugin_metadata<pitch_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { 
         par_pd_threshold,
         par_pd_subdivide,
@@ -979,7 +1403,7 @@ struct pitch_metadata: public plugin_metadata<pitch_metadata>
 
 struct widgets_metadata: public plugin_metadata<widgets_metadata>
 {
-    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true };
+    enum { in_count = 2, out_count = 2, ins_optional = 1, outs_optional = 1, support_midi = false, require_midi = false, rt_capable = true, require_instance_access = false };
     enum { 
         param_meter1,
         param_meter2,
