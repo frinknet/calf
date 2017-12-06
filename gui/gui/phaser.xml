@@ -75,7 +75,7 @@
             <value param="stereo" align-y="0.0" />
         </vbox>
         
- <align attach-x="0" attach-y="1"><toggle param="lfo" icon="pauseplay" /></align>
+        <align attach-x="0" attach-y="1"><toggle param="lfo" icon="pauseplay" /></align>
         
         <align attach-x="2" attach-y="1"><button param="reset" /></align>
         
