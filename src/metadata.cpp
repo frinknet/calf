@@ -26,11 +26,12 @@
 #include <calf/utils.h>
 
 using namespace dsp;
-using namespace calf_plugins;
 using namespace std;
 
-const char *calf_plugins::calf_copyright_info = "(C) 2001-2017 Krzysztof Foltman, Thor Harald Johanssen, Markus Schmidt, Christian Holschuh and others; license: LGPL";
 
+namespace calf_plugins {
+
+const char *calf_copyright_info = "(C) 2001-2017 Krzysztof Foltman, Thor Harald Johanssen, Markus Schmidt, Christian Holschuh and others; license: LGPL";
 const char *crossover_filter_choices[] = { "LR2", "LR4", "LR8", "LR10", "LR12" };
 const char *mb_crossover_filter_choices[] = { "LR4", "LR8", "LR10", "LR12" };
 const char *mb_crossover_filter_split[] = { "Off", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "11th" };
@@ -2592,8 +2593,11 @@ CALF_PLUGIN_INFO(widgets) = { 0x85AB, "Widgets", "Calf Widget Test", "Calf Studi
 
 ////////////////////////////////////////////////////////////////////////////
 
-calf_plugins::plugin_registry::plugin_registry()
+plugin_registry::plugin_registry()
 {
     #define PER_MODULE_ITEM(name, isSynth, jackname) plugins.push_back((new name##_metadata));
     #include <calf/modulelist.h>
 }
+
+}
+
